@@ -34,8 +34,6 @@ class CountryProfile:
     # Timezone settings
     timezones: List[str]  # Common timezones in the country
 
-    # Airbnb-specific
-    airbnb_domain: str  # Airbnb domain for this country (e.g., "www.airbnb.com.ua")
     currency: str  # Currency code (e.g., "UAH")
 
     def get_random_locale(self) -> str:
@@ -65,7 +63,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "uk,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Kiev", "Europe/Kyiv"],
-        airbnb_domain="www.airbnb.com.ua",
         currency="UAH",
     ),
 
@@ -86,7 +83,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "America/Los_Angeles",
             "America/Phoenix",
         ],
-        airbnb_domain="www.airbnb.com",
         currency="USD",
     ),
 
@@ -101,7 +97,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-GB,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/London"],
-        airbnb_domain="www.airbnb.co.uk",
         currency="GBP",
     ),
 
@@ -116,7 +111,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "de,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Berlin"],
-        airbnb_domain="www.airbnb.de",
         currency="EUR",
     ),
 
@@ -131,7 +125,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "fr,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Paris"],
-        airbnb_domain="www.airbnb.fr",
         currency="EUR",
     ),
 
@@ -146,7 +139,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "es,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Madrid"],
-        airbnb_domain="www.airbnb.es",
         currency="EUR",
     ),
 
@@ -161,7 +153,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "it,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Rome"],
-        airbnb_domain="www.airbnb.it",
         currency="EUR",
     ),
 
@@ -176,7 +167,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "nl,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Amsterdam"],
-        airbnb_domain="www.airbnb.nl",
         currency="EUR",
     ),
 
@@ -191,7 +181,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "pl,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Warsaw"],
-        airbnb_domain="www.airbnb.pl",
         currency="PLN",
     ),
 
@@ -211,7 +200,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "Asia/Yekaterinburg",
             "Asia/Novosibirsk",
         ],
-        airbnb_domain="www.airbnb.ru",
         currency="RUB",
     ),
 
@@ -230,7 +218,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "America/Rio_Branco",
             "America/Manaus",
         ],
-        airbnb_domain="www.airbnb.com.br",
         currency="BRL",
     ),
 
@@ -253,7 +240,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "Australia/Brisbane",
             "Australia/Perth",
         ],
-        airbnb_domain="www.airbnb.com.au",
         currency="AUD",
     ),
 
@@ -268,7 +254,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-IN,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Kolkata"],
-        airbnb_domain="www.airbnb.co.in",
         currency="INR",
     ),
 
@@ -283,7 +268,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "ja,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Tokyo"],
-        airbnb_domain="www.airbnb.jp",
         currency="JPY",
     ),
 
@@ -298,7 +282,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "ko,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Seoul"],
-        airbnb_domain="www.airbnb.co.kr",
         currency="KRW",
     ),
 
@@ -313,7 +296,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "zh,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Shanghai"],
-        airbnb_domain="www.airbnb.cn",
         currency="CNY",
     ),
 
@@ -332,7 +314,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "America/Cancun",
             "America/Tijuana",
         ],
-        airbnb_domain="www.airbnb.mx",
         currency="MXN",
     ),
 
@@ -347,7 +328,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "tr,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Istanbul"],
-        airbnb_domain="www.airbnb.com.tr",
         currency="TRY",
     ),
 
@@ -362,7 +342,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "sv,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Stockholm"],
-        airbnb_domain="www.airbnb.se",
         currency="SEK",
     ),
 
@@ -377,7 +356,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "nb,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Oslo"],
-        airbnb_domain="www.airbnb.no",
         currency="NOK",
     ),
 
@@ -392,7 +370,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "da,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Copenhagen"],
-        airbnb_domain="www.airbnb.dk",
         currency="DKK",
     ),
 
@@ -407,7 +384,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "fi,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Helsinki"],
-        airbnb_domain="www.airbnb.fi",
         currency="EUR",
     ),
 
@@ -422,7 +398,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "fr-CH,fr;q=0.9,en-US;q=0.8,en;q=0.7",
         ],
         timezones=["Europe/Zurich"],
-        airbnb_domain="www.airbnb.ch",
         currency="CHF",
     ),
 
@@ -437,7 +412,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "de,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Vienna"],
-        airbnb_domain="www.airbnb.at",
         currency="EUR",
     ),
 
@@ -452,7 +426,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "fr-BE,fr;q=0.9,en-US;q=0.8,en;q=0.7",
         ],
         timezones=["Europe/Brussels"],
-        airbnb_domain="www.airbnb.be",
         currency="EUR",
     ),
 
@@ -467,7 +440,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "pt,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Lisbon"],
-        airbnb_domain="www.airbnb.pt",
         currency="EUR",
     ),
 
@@ -482,7 +454,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "el,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Athens"],
-        airbnb_domain="www.airbnb.gr",
         currency="EUR",
     ),
 
@@ -497,7 +468,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "cs,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Prague"],
-        airbnb_domain="www.airbnb.cz",
         currency="CZK",
     ),
 
@@ -512,7 +482,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "ro,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Bucharest"],
-        airbnb_domain="www.airbnb.ro",
         currency="RON",
     ),
 
@@ -527,7 +496,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "hu,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Budapest"],
-        airbnb_domain="www.airbnb.hu",
         currency="HUF",
     ),
 
@@ -542,7 +510,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "he,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Jerusalem"],
-        airbnb_domain="www.airbnb.co.il",
         currency="ILS",
     ),
 
@@ -557,7 +524,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-AE,en;q=0.9,ar;q=0.8",
         ],
         timezones=["Asia/Dubai"],
-        airbnb_domain="www.airbnb.ae",
         currency="AED",
     ),
 
@@ -572,7 +538,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-SG,en-US;q=0.9,en;q=0.8,zh;q=0.7",
         ],
         timezones=["Asia/Singapore"],
-        airbnb_domain="www.airbnb.com.sg",
         currency="SGD",
     ),
 
@@ -587,7 +552,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "th,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Bangkok"],
-        airbnb_domain="www.airbnb.co.th",
         currency="THB",
     ),
 
@@ -602,7 +566,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "id,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Jakarta"],
-        airbnb_domain="www.airbnb.co.id",
         currency="IDR",
     ),
 
@@ -617,7 +580,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-PH,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Manila"],
-        airbnb_domain="www.airbnb.com.ph",
         currency="PHP",
     ),
 
@@ -632,7 +594,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "vi,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Asia/Ho_Chi_Minh"],
-        airbnb_domain="www.airbnb.com.vn",
         currency="VND",
     ),
 
@@ -647,7 +608,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-MY,en;q=0.9,ms;q=0.8",
         ],
         timezones=["Asia/Kuala_Lumpur"],
-        airbnb_domain="www.airbnb.com.my",
         currency="MYR",
     ),
 
@@ -662,7 +622,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-ZA,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Africa/Johannesburg"],
-        airbnb_domain="www.airbnb.co.za",
         currency="ZAR",
     ),
 
@@ -677,7 +636,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-NZ,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["Pacific/Auckland"],
-        airbnb_domain="www.airbnb.co.nz",
         currency="NZD",
     ),
 
@@ -692,7 +650,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "es,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["America/Argentina/Buenos_Aires"],
-        airbnb_domain="www.airbnb.com.ar",
         currency="ARS",
     ),
 
@@ -707,7 +664,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "es,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["America/Bogota"],
-        airbnb_domain="www.airbnb.com.co",
         currency="COP",
     ),
 
@@ -722,7 +678,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "es,en-US;q=0.9,en;q=0.8",
         ],
         timezones=["America/Santiago"],
-        airbnb_domain="www.airbnb.cl",
         currency="CLP",
     ),
 
@@ -737,7 +692,6 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
             "en-IE,en-GB;q=0.9,en;q=0.8",
         ],
         timezones=["Europe/Dublin"],
-        airbnb_domain="www.airbnb.ie",
         currency="EUR",
     ),
 }

@@ -8,6 +8,7 @@ Handles navigation to signup flow.
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 
+from src.config.constants import PlatformDomains
 from src.core.base_page import BasePage
 from src.pages.airbnb.selectors import HomePageSelectors
 
@@ -17,10 +18,11 @@ class AirbnbHomePage(BasePage):
     Page object for Airbnb's home page.
 
     Provides methods to interact with the home page and
-    initiate the signup flow.
+    initiate the signup flow. Supports both modal and direct URL flows.
     """
 
-    BASE_URL = "https://www.airbnb.com"
+    # Platform configuration
+    PLATFORM_CONFIG = PlatformDomains.AIRBNB
 
     def __init__(self, page: Page) -> None:
         """
@@ -35,7 +37,34 @@ class AirbnbHomePage(BasePage):
     @property
     def url(self) -> str:
         """Get the home page URL."""
-        return self.BASE_URL
+        return self.PLATFORM_CONFIG.base_url
+
+    @property
+    def signup_url(self) -> str:
+        """Get the direct signup URL."""
+        return self.PLATFORM_CONFIG.signup_url
+
+    @property
+    def is_direct_signup(self) -> bool:
+        """Check if using direct signup flow."""
+        return self.PLATFORM_CONFIG.is_direct_signup
+
+    async def navigate_to_signup(self) -> None:
+        """
+        Navigate to signup - either direct URL or via modal.
+
+        Uses the flow configured in PLATFORM_CONFIG.
+        """
+        if self.is_direct_signup:
+            self.log.info(f"Using direct signup URL: {self.signup_url}")
+            await self.page.goto(self.signup_url)
+            await self.page.wait_for_load_state("domcontentloaded")
+        else:
+            self.log.info("Using modal signup flow")
+            await self.navigate()
+            await self.accept_cookies()
+            await self.dismiss_popups()
+            await self.open_signup_modal()
 
     @property
     def page_identifier(self) -> str:

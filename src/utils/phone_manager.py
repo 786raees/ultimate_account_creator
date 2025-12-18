@@ -4,11 +4,11 @@ Phone Number Manager
 
 Manages phone numbers for signup operations including:
 - Loading phone lists from files
-- Tracking used/available numbers
+- Tracking used/available numbers via CSV
 - Persisting usage state
 """
 
-import json
+import csv
 from datetime import datetime
 from pathlib import Path
 
@@ -18,24 +18,22 @@ from src.types.enums import Platform
 from src.types.models import PhoneNumber
 from src.utils.logger import LoggerMixin
 
+# Hardcoded CSV path relative to project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+USED_PHONES_CSV = PROJECT_ROOT / "data" / "state" / "used_phones.csv"
+
 
 class PhoneManager(LoggerMixin):
     """
     Manages phone numbers for signup operations.
 
-    Handles loading phone lists, tracking usage, and persisting
-    state to prevent reuse of phone numbers.
-
-    Attributes:
-        phone_list_path: Path to the phone numbers file.
-        state_path: Path to the state persistence file.
-        platform: The platform these numbers are for.
+    Uses a simple CSV file to track used phone numbers.
     """
 
     def __init__(
         self,
         phone_list_path: Path | str,
-        state_path: Path | str,
+        state_path: Path | str,  # Kept for compatibility but not used
         platform: Platform,
     ) -> None:
         """
@@ -43,31 +41,32 @@ class PhoneManager(LoggerMixin):
 
         Args:
             phone_list_path: Path to file containing phone numbers.
-            state_path: Path to JSON file for tracking used numbers.
+            state_path: Ignored - uses hardcoded CSV path instead.
             platform: Platform these numbers are designated for.
         """
         self.phone_list_path = Path(phone_list_path)
-        self.state_path = Path(state_path)
         self.platform = platform
+        self.csv_path = USED_PHONES_CSV
 
-        self._available: list[PhoneNumber] = []
-        self._used: dict[str, dict] = {}
+        self._all_phones: list[PhoneNumber] = []
+        self._used_numbers: set[str] = set()
         self._loaded = False
 
     async def load(self) -> None:
         """
-        Load phone numbers and usage state.
-
-        Reads the phone list file and existing usage state,
-        then filters to only available numbers.
+        Load phone numbers and check CSV for used ones.
         """
+        # Load all phone numbers from file
         await self._load_phone_list()
-        await self._load_state()
-        self._filter_available()
+
+        # Load used numbers from CSV
+        self._load_used_from_csv()
+
         self._loaded = True
+        available = len(self._all_phones) - len(self._used_numbers)
         self.log.info(
-            f"Loaded {len(self._available)} available phones "
-            f"({len(self._used)} already used)"
+            f"Loaded {available} available phones "
+            f"({len(self._used_numbers)} already used in CSV)"
         )
 
     async def _load_phone_list(self) -> None:
@@ -81,7 +80,6 @@ class PhoneManager(LoggerMixin):
         async with aiofiles.open(self.phone_list_path, "r") as f:
             content = await f.read()
             for line in content.strip().split("\n"):
-                # Handle format: "number" or just "number"
                 number = line.strip()
                 if number:
                     try:
@@ -90,57 +88,60 @@ class PhoneManager(LoggerMixin):
                     except ValueError as e:
                         self.log.warning(f"Invalid phone number '{number}': {e}")
 
-        self._available = phones
+        self._all_phones = phones
         self.log.debug(f"Loaded {len(phones)} phone numbers from file")
 
-    async def _load_state(self) -> None:
-        """Load the usage state from file."""
-        if not self.state_path.exists():
-            self.log.debug("No existing state file, starting fresh")
-            self._used = {}
+    def _load_used_from_csv(self) -> None:
+        """Load used phone numbers from CSV file."""
+        self._used_numbers = set()
+
+        if not self.csv_path.exists():
+            self.log.debug(f"No CSV file found at {self.csv_path}, starting fresh")
             return
 
         try:
-            async with aiofiles.open(self.state_path, "r") as f:
-                content = await f.read()
-                data = json.loads(content)
-                # Filter to only this platform's used numbers
-                platform_key = str(self.platform)
-                self._used = data.get(platform_key, {})
-                self.log.debug(f"Loaded {len(self._used)} used numbers from state")
-        except json.JSONDecodeError as e:
-            self.log.warning(f"Invalid state file, starting fresh: {e}")
-            self._used = {}
+            with open(self.csv_path, "r", newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    phone = row.get("phone_number", "").strip()
+                    if phone:
+                        self._used_numbers.add(phone)
+            self.log.info(f"Loaded {len(self._used_numbers)} used numbers from CSV: {self.csv_path}")
+        except Exception as e:
+            self.log.error(f"Error reading CSV: {e}")
+            self._used_numbers = set()
 
-    async def _save_state(self) -> None:
-        """Persist the usage state to file."""
-        # Ensure parent directory exists
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+    def _append_to_csv(self, phone: str, success: bool) -> None:
+        """Append a used phone number to the CSV file."""
+        # Ensure directory exists
+        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Load existing state to preserve other platforms
-        existing_data: dict = {}
-        if self.state_path.exists():
-            try:
-                async with aiofiles.open(self.state_path, "r") as f:
-                    content = await f.read()
-                    existing_data = json.loads(content)
-            except (json.JSONDecodeError, FileNotFoundError):
-                existing_data = {}
+        # Check if file exists to determine if we need header
+        file_exists = self.csv_path.exists()
 
-        # Update with current platform's used numbers
-        existing_data[str(self.platform)] = self._used
+        try:
+            with open(self.csv_path, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
 
-        # Write back
-        async with aiofiles.open(self.state_path, "w") as f:
-            await f.write(json.dumps(existing_data, indent=2, default=str))
+                # Write header if new file
+                if not file_exists:
+                    writer.writerow(["phone_number", "used_at", "platform", "success"])
 
-        self.log.debug(f"Saved state with {len(self._used)} used numbers")
+                # Write the phone number
+                writer.writerow([
+                    phone,
+                    datetime.now().isoformat(),
+                    str(self.platform),
+                    str(success)
+                ])
 
-    def _filter_available(self) -> None:
-        """Filter out already used phone numbers."""
-        self._available = [
-            phone for phone in self._available if phone.number not in self._used
-        ]
+            self.log.info(f"Added {phone} to CSV: {self.csv_path}")
+        except Exception as e:
+            self.log.error(f"Error writing to CSV: {e}")
+
+    def _is_used(self, phone_number: str) -> bool:
+        """Check if a phone number is already used (in CSV)."""
+        return phone_number in self._used_numbers
 
     def get_next(self) -> PhoneNumber | None:
         """
@@ -152,15 +153,20 @@ class PhoneManager(LoggerMixin):
         if not self._loaded:
             raise RuntimeError("PhoneManager not loaded. Call load() first.")
 
-        if not self._available:
-            self.log.warning("No available phone numbers remaining")
-            return None
+        # Re-read CSV to get latest used numbers (in case of concurrent runs)
+        self._load_used_from_csv()
 
-        return self._available[0]
+        for phone in self._all_phones:
+            if not self._is_used(phone.number):
+                self.log.info(f"Next available phone: {phone.formatted}")
+                return phone
+
+        self.log.warning("No available phone numbers remaining")
+        return None
 
     async def mark_used(self, phone: PhoneNumber, success: bool = True) -> None:
         """
-        Mark a phone number as used.
+        Mark a phone number as used by adding to CSV.
 
         Args:
             phone: The phone number to mark as used.
@@ -169,21 +175,16 @@ class PhoneManager(LoggerMixin):
         if not self._loaded:
             raise RuntimeError("PhoneManager not loaded. Call load() first.")
 
-        self._used[phone.number] = {
-            "used_at": datetime.now().isoformat(),
-            "success": success,
-            "platform": str(self.platform),
-        }
+        # Add to in-memory set
+        self._used_numbers.add(phone.number)
 
-        # Remove from available list
-        self._available = [p for p in self._available if p.number != phone.number]
+        # Append to CSV file
+        self._append_to_csv(phone.number, success)
 
-        # Persist state
-        await self._save_state()
-
+        available = len(self._all_phones) - len(self._used_numbers)
         self.log.info(
             f"Marked phone {phone.formatted} as used "
-            f"(success={success}, {len(self._available)} remaining)"
+            f"(success={success}, {available} remaining)"
         )
 
     async def mark_failed(self, phone: PhoneNumber) -> None:
@@ -198,17 +199,17 @@ class PhoneManager(LoggerMixin):
     @property
     def available_count(self) -> int:
         """Get the count of available phone numbers."""
-        return len(self._available)
+        return len(self._all_phones) - len(self._used_numbers)
 
     @property
     def used_count(self) -> int:
         """Get the count of used phone numbers."""
-        return len(self._used)
+        return len(self._used_numbers)
 
     @property
     def total_count(self) -> int:
         """Get the total count of phone numbers."""
-        return self.available_count + self.used_count
+        return len(self._all_phones)
 
     def get_stats(self) -> dict:
         """Get usage statistics."""
@@ -217,12 +218,5 @@ class PhoneManager(LoggerMixin):
             "available": self.available_count,
             "used": self.used_count,
             "total": self.total_count,
-            "success_rate": self._calculate_success_rate(),
+            "csv_path": str(self.csv_path),
         }
-
-    def _calculate_success_rate(self) -> float:
-        """Calculate the success rate of used numbers."""
-        if not self._used:
-            return 0.0
-        successes = sum(1 for data in self._used.values() if data.get("success", False))
-        return (successes / len(self._used)) * 100

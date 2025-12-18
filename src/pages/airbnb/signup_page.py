@@ -263,7 +263,7 @@ class AirbnbSignupPage(BasePage):
     # OTP Verification
     # -------------------------------------------------------------------------
 
-    async def wait_for_otp_screen(self, timeout: int = 30000) -> bool:
+    async def wait_for_otp_screen(self, timeout: int = 1200000) -> bool:
         """
         Wait for the OTP verification screen.
 

@@ -10,6 +10,7 @@ Includes comprehensive debug logging and screenshot capture.
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 from tenacity import (
@@ -110,7 +111,7 @@ class SignupOrchestrator(LoggerMixin):
 
     async def run_single_signup(
         self,
-        otp_callback: callable | None = None,
+        otp_callback: Callable | None = None,
     ) -> SignupResult:
         """
         Run a single signup attempt.
@@ -198,7 +199,7 @@ class SignupOrchestrator(LoggerMixin):
         self,
         phone: PhoneNumber,
         profile: UserProfile,
-        otp_callback: callable | None,
+        otp_callback: Callable | None,
         start_time: datetime,
     ) -> SignupResult:
         """
@@ -226,70 +227,62 @@ class SignupOrchestrator(LoggerMixin):
                 signup_page = AirbnbSignupPage(page)
 
                 # ============================================================
-                # STEP 1: Navigate to Airbnb
+                # STEP 1: Navigate to Signup
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 1: Navigating to Airbnb")
+                self.log.info("STEP 1: Navigating to Signup")
                 self.log.info("-" * 60)
                 self._current_step = SignupStep.INITIALIZED
 
-                await home_page.navigate()
-                await self._log_page_state(page, "After navigation")
-                await self._take_screenshot(page, "01_home_page")
+                # Uses direct URL or modal flow based on config
+                await home_page.navigate_to_signup()
+                await self._log_page_state(page, "After navigation to signup")
+                await self._take_screenshot(page, "01_signup_page")
 
-                # Handle cookies and popups
+                # Handle cookies and popups (may appear on direct URL too)
                 self.log.info("Handling cookies and popups...")
-                await home_page.accept_cookies()
-                await home_page.dismiss_popups()
+                # await home_page.accept_cookies()
+                # await home_page.dismiss_popups()
                 await page.wait_for_timeout(2000)
                 await self._take_screenshot(page, "02_after_popups")
 
-                # ============================================================
-                # STEP 2: Open signup modal
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 2: Opening signup modal")
-                self.log.info("-" * 60)
                 self._current_step = SignupStep.NAVIGATED_TO_SIGNUP
 
-                await home_page.open_signup_modal()
-                await page.wait_for_timeout(2000)
-                await self._take_screenshot(page, "03_signup_modal_opening")
+                # ============================================================
+                # STEP 2: Wait for signup form and select phone method
+                # ============================================================
+                self.log.info("-" * 60)
+                self.log.info("STEP 2: Waiting for signup form")
+                self.log.info("-" * 60)
 
-                # Wait for modal
-                self.log.info("Waiting for signup modal to appear...")
+                # Wait for signup form (works for both modal and direct page)
                 try:
                     await signup_page.wait_for_signup_modal()
-                    self.log.info("Signup modal is visible!")
+                    self.log.info("Signup form is visible!")
                 except PlaywrightTimeout:
-                    self.log.error("Signup modal did not appear!")
-                    await self._take_screenshot(page, "03_ERROR_no_modal")
-                    await self._log_page_state(page, "Modal not found")
+                    self.log.error("Signup form did not appear!")
+                    await self._take_screenshot(page, "02_ERROR_no_form")
+                    await self._log_page_state(page, "Form not found")
                     return self._create_result(
                         success=False,
                         step=self._current_step,
-                        error="Signup modal did not appear",
+                        error="Signup form did not appear",
                         start_time=start_time,
                     )
 
-                await self._take_screenshot(page, "04_signup_modal_visible")
+                await self._take_screenshot(page, "03_signup_form_visible")
 
-                # ============================================================
-                # STEP 3: Select phone signup method
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 3: Selecting phone signup method")
-                self.log.info("-" * 60)
-
+                # Select phone signup method
+                self.log.info("Selecting phone signup method...")
                 await signup_page.select_phone_signup()
                 await page.wait_for_timeout(1500)
-                await self._take_screenshot(page, "05_phone_method_selected")
+                await self._take_screenshot(page, "04_phone_method_selected")
 
                 # ============================================================
-                # STEP 4: Enter phone number
+                # STEP 3: Enter phone number
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 4: Entering phone number")
+                self.log.info("STEP 3: Entering phone number")
                 self.log.info("-" * 60)
                 self._current_step = SignupStep.PHONE_ENTERED
 
@@ -317,10 +310,10 @@ class SignupOrchestrator(LoggerMixin):
                     )
 
                 # ============================================================
-                # STEP 5: Wait for OTP screen
+                # STEP 4: Wait for OTP screen
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 5: Waiting for OTP verification screen")
+                self.log.info("STEP 4: Waiting for OTP verification screen")
                 self.log.info("-" * 60)
                 self._current_step = SignupStep.OTP_REQUESTED
 
@@ -341,10 +334,10 @@ class SignupOrchestrator(LoggerMixin):
                 self.log.info("OTP screen detected!")
 
                 # ============================================================
-                # STEP 6: Handle OTP entry
+                # STEP 5: Handle OTP entry
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 6: Handling OTP entry")
+                self.log.info("STEP 5: Handling OTP entry")
                 self.log.info("-" * 60)
 
                 if otp_callback:
@@ -391,10 +384,10 @@ class SignupOrchestrator(LoggerMixin):
                 await self._take_screenshot(page, "11_after_otp")
 
                 # ============================================================
-                # STEP 7: Fill profile form
+                # STEP 6: Fill profile form
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 7: Filling profile form")
+                self.log.info("STEP 6: Filling profile form")
                 self.log.info("-" * 60)
                 self._current_step = SignupStep.PROFILE_COMPLETED
 
@@ -411,10 +404,10 @@ class SignupOrchestrator(LoggerMixin):
                     self.log.warning("Profile form not found - may have skipped")
 
                 # ============================================================
-                # STEP 8: Verify signup success
+                # STEP 7: Verify signup success
                 # ============================================================
                 self.log.info("-" * 60)
-                self.log.info("STEP 8: Verifying signup success")
+                self.log.info("STEP 7: Verifying signup success")
                 self.log.info("-" * 60)
 
                 await page.wait_for_timeout(3000)
@@ -503,7 +496,7 @@ class SignupOrchestrator(LoggerMixin):
     async def run_batch_signup(
         self,
         count: int,
-        otp_callback: callable | None = None,
+        otp_callback: Callable | None = None,
         delay_between: int = 5,
     ) -> list[SignupResult]:
         """

@@ -174,8 +174,13 @@ class PathSettings(BaseSettings):
     @field_validator("phone_list_airbnb", "used_phones_path", "accounts_output_path", mode="before")
     @classmethod
     def validate_path(cls, v: str | Path) -> Path:
-        """Convert string paths to Path objects."""
-        return Path(v) if isinstance(v, str) else v
+        """Convert string paths to Path objects and resolve relative to project root."""
+        path = Path(v) if isinstance(v, str) else v
+        if not path.is_absolute():
+            # Resolve relative paths from project root (src/config/settings.py -> ../../)
+            project_root = Path(__file__).parent.parent.parent
+            path = project_root / path
+        return path.resolve()
 
 
 class LogSettings(BaseSettings):
