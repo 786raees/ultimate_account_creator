@@ -1,0 +1,131 @@
+# =============================================================================
+# SIGNUP AUTOMATION - GIT IGNORE
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# -----------------------------------------------------------------------------
+# Virtual Environments
+# -----------------------------------------------------------------------------
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# -----------------------------------------------------------------------------
+# Type Checking
+# -----------------------------------------------------------------------------
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# -----------------------------------------------------------------------------
+# Project Specific
+# -----------------------------------------------------------------------------
+# Sensitive data
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials*.json
+
+# Logs (ignore contents but keep directory)
+logs/*
+!logs/.gitkeep
+*.log
+
+# State files (track phone usage)
+data/state/
+
+# Generated accounts (sensitive)
+data/accounts/
+
+# Screenshots from debugging (ignore contents but keep directory)
+screenshots/*
+!screenshots/.gitkeep
+*.png
+*.jpg
+
+# Playwright
+playwright-report/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Keep phone lists but not state
+!data/phones/.gitkeep
+
+# Debug scripts
+debug_*.py
+
+# Phone list files in root
+*_phone_list.txt
+
+# Windows artifacts
+nul

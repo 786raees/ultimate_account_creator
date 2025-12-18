@@ -1,0 +1,17 @@
+# =============================================================================
+# SIGNUP AUTOMATION - PYTHON DEPENDENCIES
+# =============================================================================
+# Install: pip install -r requirements.txt
+# Install dev: pip install -r requirements.txt -r requirements-dev.txt
+
+# Core Dependencies
+playwright>=1.40.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+loguru>=0.7.2
+faker>=22.0.0
+aiofiles>=23.2.1
+tenacity>=8.2.3
+aiohttp>=3.9.0
+email-validator>=2.0.0
