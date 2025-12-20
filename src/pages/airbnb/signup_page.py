@@ -138,6 +138,9 @@ class AirbnbSignupPage(BasePage):
             "375": ("BY", "Belarus"),
             "261": ("MG", "Madagascar"),
             "962": ("JO", "Jordan"),
+            "972": ("IL", "Israel"),
+            "855": ("KH", "Cambodia"),
+            "229": ("BJ", "Benin"),
             "1": ("US", "United States"),  # Note: US, CA, and others share +1
             "92": ("PK", "Pakistan"),
             "44": ("GB", "United Kingdom"),

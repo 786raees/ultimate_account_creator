@@ -25,7 +25,8 @@ def parse_args() -> argparse.Namespace:
 Examples:
   python -m src.main --platform airbnb
   python -m src.main --platform airbnb --batch 5
-  python -m src.main --platform airbnb --headless
+  python -m src.main --platform airbnb --all
+  python -m src.main --platform airbnb --all --delay 15
 
 Supported Platforms:
   - airbnb: Airbnb.com signup automation
@@ -50,9 +51,10 @@ Supported Platforms:
     )
 
     parser.add_argument(
-        "--headless",
+        "--all",
+        "-a",
         action="store_true",
-        help="Run browser in headless mode",
+        help="Run signup for ALL available phone numbers",
     )
 
     parser.add_argument(
@@ -87,9 +89,11 @@ Supported Platforms:
 
 async def run_airbnb(args: argparse.Namespace) -> None:
     """Run Airbnb signup automation."""
-    from src.runners.airbnb_runner import run_single_signup, run_batch_signup
+    from src.runners.airbnb_runner import run_single_signup, run_batch_signup, run_all_phones
 
-    if args.batch > 1:
+    if args.all:
+        await run_all_phones(delay_between=args.delay)
+    elif args.batch > 1:
         await run_batch_signup(args.batch)
     else:
         await run_single_signup()
@@ -128,10 +132,6 @@ def main() -> int:
     if args.verbose:
         import os
         os.environ["LOG_LEVEL"] = "DEBUG"
-
-    if args.headless:
-        import os
-        os.environ["HEADLESS"] = "true"
 
     # Run async main
     return asyncio.run(main_async(args))

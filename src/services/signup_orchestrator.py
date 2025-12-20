@@ -82,10 +82,12 @@ class SignupOrchestrator(LoggerMixin):
 
         self._browser_manager: BrowserManager | None = None
         self._current_step = SignupStep.INITIALIZED
+        self._current_phone: str | None = None
 
-        # Screenshot directory
-        self.screenshot_dir = Path("./screenshots")
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        # Base screenshot directory
+        self.screenshot_base_dir = Path("./screenshots")
+        self.screenshot_base_dir.mkdir(parents=True, exist_ok=True)
+        self.screenshot_dir = self.screenshot_base_dir
 
     async def _take_screenshot(self, page: Page, step_name: str) -> None:
         """Take a debug screenshot for the current step."""
@@ -146,6 +148,12 @@ class SignupOrchestrator(LoggerMixin):
             self.log.info(f"Phone selected: {phone.formatted}")
             self.log.info(f"  Country code: {phone.country_code}")
             self.log.info(f"  Local number: {phone.local_number}")
+
+            # Create phone-specific screenshot directory
+            self._current_phone = phone.number
+            self.screenshot_dir = self.screenshot_base_dir / phone.number
+            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+            self.log.info(f"  Screenshots: {self.screenshot_dir}")
 
             # Generate profile
             profile = self.data_generator.generate_profile()

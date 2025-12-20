@@ -48,20 +48,57 @@ class PhoneNumber(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Extract country code and local number after initialization."""
         if self.number and not self.country_code:
-            # Common country codes mapping (first 1-3 digits)
-            if self.number.startswith("380"):  # Ukraine
-                object.__setattr__(self, "country_code", "380")
-                object.__setattr__(self, "local_number", self.number[3:])
-            elif self.number.startswith("375"):  # Belarus
-                object.__setattr__(self, "country_code", "375")
-                object.__setattr__(self, "local_number", self.number[3:])
-            elif self.number.startswith("261"):  # Madagascar
-                object.__setattr__(self, "country_code", "261")
-                object.__setattr__(self, "local_number", self.number[3:])
-            elif self.number.startswith("962"):  # Jordan
-                object.__setattr__(self, "country_code", "962")
-                object.__setattr__(self, "local_number", self.number[3:])
-            elif self.number.startswith("1"):  # US/Canada
+            # Try to match country codes from longest to shortest
+            # Common country codes (3 digits first, then 2, then 1)
+            country_codes_3_digit = {
+                "380": "Ukraine",
+                "375": "Belarus",
+                "261": "Madagascar",
+                "962": "Jordan",
+                "972": "Israel",
+                "855": "Cambodia",
+                "229": "Benin",
+            }
+            country_codes_2_digit = {
+                "44": "UK",
+                "49": "Germany",
+                "33": "France",
+                "39": "Italy",
+                "34": "Spain",
+                "91": "India",
+                "86": "China",
+                "81": "Japan",
+                "82": "South Korea",
+                "61": "Australia",
+                "55": "Brazil",
+                "52": "Mexico",
+                "27": "South Africa",
+                "20": "Egypt",
+                "90": "Turkey",
+                "62": "Indonesia",
+                "63": "Philippines",
+                "66": "Thailand",
+                "84": "Vietnam",
+                "60": "Malaysia",
+                "65": "Singapore",
+            }
+
+            # Check 3-digit codes first
+            for code in country_codes_3_digit:
+                if self.number.startswith(code):
+                    object.__setattr__(self, "country_code", code)
+                    object.__setattr__(self, "local_number", self.number[len(code):])
+                    return
+
+            # Check 2-digit codes
+            for code in country_codes_2_digit:
+                if self.number.startswith(code):
+                    object.__setattr__(self, "country_code", code)
+                    object.__setattr__(self, "local_number", self.number[len(code):])
+                    return
+
+            # Check 1-digit code (US/Canada)
+            if self.number.startswith("1"):
                 object.__setattr__(self, "country_code", "1")
                 object.__setattr__(self, "local_number", self.number[1:])
 

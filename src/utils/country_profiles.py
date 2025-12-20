@@ -694,6 +694,81 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
         timezones=["Europe/Dublin"],
         currency="EUR",
     ),
+
+    # Belarus (+375)
+    "375": CountryProfile(
+        country_code="375",
+        country_name="Belarus",
+        iso_code="BY",
+        locales=["be-BY", "ru-BY", "en-BY"],
+        accept_languages=[
+            "be-BY,be;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+            "ru-BY,ru;q=0.9,be;q=0.8,en-US;q=0.7,en;q=0.6",
+            "ru,en-US;q=0.9,en;q=0.8",
+        ],
+        timezones=["Europe/Minsk"],
+        currency="BYN",
+    ),
+
+    # Madagascar (+261)
+    "261": CountryProfile(
+        country_code="261",
+        country_name="Madagascar",
+        iso_code="MG",
+        locales=["mg-MG", "fr-MG", "en-MG"],
+        accept_languages=[
+            "fr-MG,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "mg,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "fr,en-US;q=0.9,en;q=0.8",
+        ],
+        timezones=["Indian/Antananarivo"],
+        currency="MGA",
+    ),
+
+    # Jordan (+962)
+    "962": CountryProfile(
+        country_code="962",
+        country_name="Jordan",
+        iso_code="JO",
+        locales=["ar-JO", "en-JO"],
+        accept_languages=[
+            "ar-JO,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+            "ar,en-US;q=0.9,en;q=0.8",
+            "en-JO,en;q=0.9,ar;q=0.8",
+        ],
+        timezones=["Asia/Amman"],
+        currency="JOD",
+    ),
+
+    # Cambodia (+855)
+    "855": CountryProfile(
+        country_code="855",
+        country_name="Cambodia",
+        iso_code="KH",
+        locales=["km-KH", "en-KH"],
+        accept_languages=[
+            "km-KH,km;q=0.9,en-US;q=0.8,en;q=0.7",
+            "en-KH,en;q=0.9,km;q=0.8",
+            "en,km;q=0.9",
+        ],
+        timezones=["Asia/Phnom_Penh"],
+        currency="KHR",
+    ),
+
+    # Benin (+229)
+    "229": CountryProfile(
+        country_code="229",
+        country_name="Benin",
+        iso_code="BJ",
+        locales=["fr-BJ", "en-BJ"],
+        accept_languages=[
+            "fr-BJ,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "fr,en-US;q=0.9,en;q=0.8",
+            "en-BJ,en;q=0.9,fr;q=0.8",
+        ],
+        timezones=["Africa/Porto-Novo"],
+        currency="XOF",
+    ),
 }
 
 # Default profile for unknown country codes (fallback to US)

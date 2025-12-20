@@ -71,6 +71,40 @@ class ProxySettings(BaseSettings):
             "password": self.password,
         }
 
+    def get_country_targeted_username(self, country_iso: str) -> str:
+        """
+        Get username with country targeting suffix.
+
+        Smartproxy/Decodo format: user-USERNAME-country-XX
+        where XX is 2-letter ISO country code.
+
+        Args:
+            country_iso: 2-letter ISO country code (e.g., "UA", "US", "GB")
+
+        Returns:
+            Username with country targeting suffix.
+        """
+        if not country_iso:
+            return self.username
+        return f"user-{self.username}-country-{country_iso.lower()}"
+
+    def get_country_targeted_playwright_proxy(self, country_iso: str) -> dict[str, str]:
+        """
+        Get proxy configuration with country targeting.
+
+        Args:
+            country_iso: 2-letter ISO country code (e.g., "UA", "US", "GB")
+
+        Returns:
+            Playwright proxy config with country-targeted username.
+        """
+        rotated_port = self.get_rotated_port()
+        return {
+            "server": f"http://{self.host}:{rotated_port}",
+            "username": self.get_country_targeted_username(country_iso),
+            "password": self.password,
+        }
+
 
 class CaptchaSettings(BaseSettings):
     """CAPTCHA solving service configuration."""

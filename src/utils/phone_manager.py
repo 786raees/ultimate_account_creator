@@ -199,11 +199,15 @@ class PhoneManager(LoggerMixin):
     @property
     def available_count(self) -> int:
         """Get the count of available phone numbers."""
+        # Re-read CSV to get latest used numbers
+        self._load_used_from_csv()
         return len(self._all_phones) - len(self._used_numbers)
 
     @property
     def used_count(self) -> int:
         """Get the count of used phone numbers."""
+        # Re-read CSV to get latest used numbers
+        self._load_used_from_csv()
         return len(self._used_numbers)
 
     @property

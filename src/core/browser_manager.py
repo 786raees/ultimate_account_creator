@@ -75,6 +75,7 @@ class BrowserManager(LoggerMixin):
         self._current_fingerprint: Optional[BrowserFingerprint] = None
         self._current_proxy_port: Optional[int] = None
         self._phone_number: Optional[str] = None
+        self._country_iso: Optional[str] = None  # ISO country code for proxy targeting
 
         # Screenshot directory for debugging
         self.screenshot_dir = Path("./screenshots")
@@ -82,16 +83,27 @@ class BrowserManager(LoggerMixin):
 
     def set_phone_number(self, phone_number: str) -> None:
         """
-        Set the phone number for country-based fingerprinting.
+        Set the phone number for country-based fingerprinting and proxy targeting.
 
         Call this before start() to generate a fingerprint matching
-        the phone's country.
+        the phone's country and route proxy through the same country.
 
         Args:
             phone_number: Phone number with country code (e.g., "+380969200145").
         """
+        from src.utils.country_profiles import get_profile_for_phone
+
         self._phone_number = phone_number
-        self.log.info(f"Phone number set for fingerprint: {phone_number}")
+
+        # Extract country ISO code for proxy targeting
+        try:
+            profile = get_profile_for_phone(phone_number)
+            self._country_iso = profile.iso_code
+            self.log.info(f"Phone number set: {phone_number}")
+            self.log.info(f"Country targeting: {profile.country_name} ({self._country_iso})")
+        except Exception as e:
+            self.log.warning(f"Could not determine country for phone {phone_number}: {e}")
+            self._country_iso = None
 
     async def start(self) -> None:
         """
@@ -138,7 +150,10 @@ class BrowserManager(LoggerMixin):
             self.log.info(f"Proxy Host: {self.settings.proxy.host}:{self._current_proxy_port}")
 
         if self.use_proxy:
-            self.log.info(f"Proxy User: {self.settings.proxy.username}")
+            proxy_username = self._get_proxy_username()
+            self.log.info(f"Proxy User: {proxy_username}")
+            if self._country_iso:
+                self.log.info(f"Proxy Country Target: {self._country_iso}")
 
         self._playwright = await async_playwright().start()
 
@@ -187,22 +202,34 @@ class BrowserManager(LoggerMixin):
 
         return launchers[self.browser_type]
 
+    def _get_proxy_username(self) -> str:
+        """
+        Get the proxy username with optional country targeting.
+
+        Returns country-targeted username if a phone country was set,
+        otherwise returns the base username.
+        """
+        if self._country_iso:
+            return self.settings.proxy.get_country_targeted_username(self._country_iso)
+        return self.settings.proxy.username
+
     def _build_launch_options(self) -> dict:
-        """Build browser launch options with optional rotated proxy."""
+        """Build browser launch options with optional rotated proxy and country targeting."""
         options = {
             "headless": self.settings.browser.headless,
             "slow_mo": self.settings.browser.slow_mo,
         }
 
-        # Add proxy if enabled (use rotated port)
+        # Add proxy if enabled (use rotated port and country targeting)
         if self.use_proxy and self.settings.proxy.username:
+            proxy_username = self._get_proxy_username()
             proxy_config = {
                 "server": f"http://{self.settings.proxy.host}:{self._current_proxy_port or self.settings.proxy.port}",
-                "username": self.settings.proxy.username,
+                "username": proxy_username,
                 "password": self.settings.proxy.password,
             }
             options["proxy"] = proxy_config
-            self.log.info(f"Proxy configured: {self.settings.proxy.host}:{self._current_proxy_port}")
+            self.log.info(f"Proxy configured: {self.settings.proxy.host}:{self._current_proxy_port} (user: {proxy_username})")
 
         return options
 
@@ -232,11 +259,12 @@ class BrowserManager(LoggerMixin):
                 "ignore_https_errors": True,
             }
 
-        # Add proxy authentication if needed (use rotated port)
+        # Add proxy authentication if needed (use rotated port and country targeting)
         if self.use_proxy and self.settings.proxy.username:
+            proxy_username = self._get_proxy_username()
             options["proxy"] = {
                 "server": f"http://{self.settings.proxy.host}:{self._current_proxy_port or self.settings.proxy.port}",
-                "username": self.settings.proxy.username,
+                "username": proxy_username,
                 "password": self.settings.proxy.password,
             }
 
@@ -264,6 +292,17 @@ class BrowserManager(LoggerMixin):
     def _setup_page_logging(self, page: Page) -> None:
         """Set up comprehensive page event logging."""
 
+        # API endpoints to log in detail
+        api_keywords = [
+            "phone_one_time_passwords",
+            "api/v2",
+            "api/v3",
+            "authentications",
+            "signup",
+            "login",
+            "register",
+        ]
+
         # Console message logging
         def on_console(msg: ConsoleMessage) -> None:
             if msg.type == "error":
@@ -281,19 +320,70 @@ class BrowserManager(LoggerMixin):
 
         page.on("pageerror", on_page_error)
 
-        # Request logging (for debugging network issues)
+        # Request logging with POST data for API calls
         def on_request(request: Request) -> None:
-            if self.debug_mode and request.resource_type in ["document", "xhr", "fetch"]:
-                self.log.debug(f"[REQUEST] {request.method} {request.url[:100]}")
+            url = request.url
+            is_api_call = any(kw in url for kw in api_keywords)
+
+            if is_api_call:
+                self.log.info(f"[API REQUEST] {request.method} {url}")
+
+                # Log POST data if available
+                if request.method == "POST":
+                    try:
+                        post_data = request.post_data
+                        if post_data:
+                            self.log.info(f"[API REQUEST BODY] {post_data[:2000]}")
+                    except Exception as e:
+                        self.log.debug(f"Could not get POST data: {e}")
+
+                # Log headers for API calls
+                try:
+                    headers = request.headers
+                    important_headers = {k: v for k, v in headers.items()
+                                        if k.lower() in ['content-type', 'x-airbnb-api-key', 'authorization', 'x-csrf-token']}
+                    if important_headers:
+                        self.log.info(f"[API REQUEST HEADERS] {important_headers}")
+                except Exception:
+                    pass
+
+            elif self.debug_mode and request.resource_type in ["document", "xhr", "fetch"]:
+                self.log.debug(f"[REQUEST] {request.method} {url[:100]}")
 
         page.on("request", on_request)
 
-        # Response logging
-        def on_response(response: Response) -> None:
-            if response.status >= 400:
-                self.log.warning(f"[RESPONSE {response.status}] {response.url[:100]}")
+        # Response logging with body for API calls
+        async def on_response_async(response: Response) -> None:
+            url = response.url
+            status = response.status
+            is_api_call = any(kw in url for kw in api_keywords)
+
+            if is_api_call:
+                self.log.info(f"[API RESPONSE] {status} {url}")
+
+                # Log response body for API calls
+                try:
+                    body = await response.text()
+                    if body:
+                        # Truncate long responses
+                        body_preview = body[:3000] + "..." if len(body) > 3000 else body
+                        self.log.info(f"[API RESPONSE BODY] {body_preview}")
+                except Exception as e:
+                    self.log.debug(f"Could not get response body: {e}")
+
+            elif status >= 400:
+                self.log.warning(f"[RESPONSE {status}] {url[:100]}")
             elif self.debug_mode and response.request.resource_type in ["document", "xhr", "fetch"]:
-                self.log.debug(f"[RESPONSE {response.status}] {response.url[:100]}")
+                self.log.debug(f"[RESPONSE {status}] {url[:100]}")
+
+        def on_response(response: Response) -> None:
+            # Schedule async response handling
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(on_response_async(response))
+            except RuntimeError:
+                pass  # No event loop running
 
         page.on("response", on_response)
 
@@ -304,7 +394,7 @@ class BrowserManager(LoggerMixin):
 
         page.on("dialog", lambda d: page._loop.create_task(on_dialog(d)))
 
-        self.log.debug("Page event logging configured")
+        self.log.debug("Page event logging configured (API logging enabled)")
 
     async def create_context(self) -> BrowserContext:
         """
