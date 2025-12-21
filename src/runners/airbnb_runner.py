@@ -3,6 +3,11 @@ Airbnb Signup Runner
 ====================
 
 Command-line runner for Airbnb signup automation.
+
+Supports MultiLoginX for browser profile management with:
+- Automatic profile creation for each signup attempt
+- Rotating proxy ports for each profile
+- Profile cleanup after each attempt
 """
 
 import asyncio
@@ -111,6 +116,8 @@ async def run_all_phones(delay_between: int = 10) -> None:
     """
     Run Airbnb signup for ALL available phone numbers.
 
+    Each signup uses a fresh MultiLoginX profile with rotated proxy.
+
     Args:
         delay_between: Delay between each signup attempt in seconds.
     """
@@ -118,6 +125,15 @@ async def run_all_phones(delay_between: int = 10) -> None:
     settings = get_settings()
 
     logger.info("Starting Airbnb signup for ALL phone numbers")
+
+    # Log MultiLoginX status
+    if settings.multiloginx.enabled:
+        logger.info("MultiLoginX: ENABLED")
+        logger.info(f"  API URL: {settings.multiloginx.base_url}")
+        logger.info(f"  Browser: {settings.multiloginx.browser_type} v{settings.multiloginx.core_version}")
+        logger.info("  Each signup will use a fresh profile with rotated proxy")
+    else:
+        logger.info("MultiLoginX: DISABLED (using direct Playwright)")
 
     # Initialize phone manager
     phone_manager = PhoneManager(
@@ -138,6 +154,8 @@ async def run_all_phones(delay_between: int = 10) -> None:
 
     print(f"\n{'='*60}")
     print(f"RUNNING SIGNUP FOR ALL {total_available} AVAILABLE PHONE NUMBERS")
+    if settings.multiloginx.enabled:
+        print(f"Using MultiLoginX profiles with rotating proxies")
     print(f"{'='*60}\n")
 
     # Initialize data generator

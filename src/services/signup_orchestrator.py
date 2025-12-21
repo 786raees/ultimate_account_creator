@@ -213,6 +213,9 @@ class SignupOrchestrator(LoggerMixin):
         """
         Run the Airbnb-specific signup flow.
 
+        Uses MultiLoginX for browser profile management when enabled.
+        Each signup gets a fresh profile with rotated proxy.
+
         Args:
             phone: Phone number for verification.
             profile: User profile data.
@@ -222,237 +225,251 @@ class SignupOrchestrator(LoggerMixin):
         Returns:
             SignupResult with the outcome.
         """
-        browser_manager = BrowserManager(use_proxy=True, debug_mode=True)
+        settings = get_settings()
+
+        # Create browser manager with MultiLoginX support
+        # MultiLoginX is enabled by default in settings
+        browser_manager = BrowserManager(
+            use_proxy=True,
+            debug_mode=True,
+            use_multiloginx=settings.multiloginx.enabled,
+        )
 
         # Set phone number for country-based fingerprint matching
         # This ensures browser fingerprint (timezone, locale, etc.) matches the phone's country
         browser_manager.set_phone_number(phone.formatted)
 
+        if settings.multiloginx.enabled:
+            self.log.info("Using MultiLoginX for browser profile management")
+
         try:
-            async with browser_manager.session() as page:
-                # Initialize pages
-                home_page = AirbnbHomePage(page)
-                signup_page = AirbnbSignupPage(page)
+            # Start browser and get page
+            await browser_manager.start()
+            page = browser_manager.page
 
-                # ============================================================
-                # STEP 1: Navigate to Signup
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 1: Navigating to Signup")
-                self.log.info("-" * 60)
-                self._current_step = SignupStep.INITIALIZED
+            # Initialize pages
+            home_page = AirbnbHomePage(page)
+            signup_page = AirbnbSignupPage(page)
 
-                # Uses direct URL or modal flow based on config
-                await home_page.navigate_to_signup()
-                await self._log_page_state(page, "After navigation to signup")
-                await self._take_screenshot(page, "01_signup_page")
+            # ============================================================
+            # STEP 1: Navigate to Signup
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 1: Navigating to Signup")
+            self.log.info("-" * 60)
+            self._current_step = SignupStep.INITIALIZED
 
-                # Handle cookies and popups (may appear on direct URL too)
-                self.log.info("Handling cookies and popups...")
-                # await home_page.accept_cookies()
-                # await home_page.dismiss_popups()
-                await page.wait_for_timeout(2000)
-                await self._take_screenshot(page, "02_after_popups")
+            # Uses direct URL or modal flow based on config
+            await home_page.navigate_to_signup()
+            await self._log_page_state(page, "After navigation to signup")
+            await self._take_screenshot(page, "01_signup_page")
 
-                self._current_step = SignupStep.NAVIGATED_TO_SIGNUP
+            # Handle cookies and popups (may appear on direct URL too)
+            self.log.info("Handling cookies and popups...")
+            # await home_page.accept_cookies()
+            # await home_page.dismiss_popups()
+            await page.wait_for_timeout(2000)
+            await self._take_screenshot(page, "02_after_popups")
 
-                # ============================================================
-                # STEP 2: Wait for signup form and select phone method
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 2: Waiting for signup form")
-                self.log.info("-" * 60)
+            self._current_step = SignupStep.NAVIGATED_TO_SIGNUP
 
-                # Wait for signup form (works for both modal and direct page)
-                try:
-                    await signup_page.wait_for_signup_modal()
-                    self.log.info("Signup form is visible!")
-                except PlaywrightTimeout:
-                    self.log.error("Signup form did not appear!")
-                    await self._take_screenshot(page, "02_ERROR_no_form")
-                    await self._log_page_state(page, "Form not found")
-                    return self._create_result(
-                        success=False,
-                        step=self._current_step,
-                        error="Signup form did not appear",
-                        start_time=start_time,
-                    )
+            # ============================================================
+            # STEP 2: Wait for signup form and select phone method
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 2: Waiting for signup form")
+            self.log.info("-" * 60)
 
-                await self._take_screenshot(page, "03_signup_form_visible")
+            # Wait for signup form (works for both modal and direct page)
+            try:
+                await signup_page.wait_for_signup_modal()
+                self.log.info("Signup form is visible!")
+            except PlaywrightTimeout:
+                self.log.error("Signup form did not appear!")
+                await self._take_screenshot(page, "02_ERROR_no_form")
+                await self._log_page_state(page, "Form not found")
+                return self._create_result(
+                    success=False,
+                    step=self._current_step,
+                    error="Signup form did not appear",
+                    start_time=start_time,
+                )
 
-                # Select phone signup method
-                self.log.info("Selecting phone signup method...")
-                await signup_page.select_phone_signup()
-                await page.wait_for_timeout(1500)
-                await self._take_screenshot(page, "04_phone_method_selected")
+            await self._take_screenshot(page, "03_signup_form_visible")
 
-                # ============================================================
-                # STEP 3: Enter phone number
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 3: Entering phone number")
-                self.log.info("-" * 60)
-                self._current_step = SignupStep.PHONE_ENTERED
+            # Select phone signup method
+            self.log.info("Selecting phone signup method...")
+            await signup_page.select_phone_signup()
+            await page.wait_for_timeout(1500)
+            await self._take_screenshot(page, "04_phone_method_selected")
 
-                self.log.info(f"Entering phone: {phone.formatted}")
-                await signup_page.enter_phone_number(phone)
-                await page.wait_for_timeout(1000)
-                await self._take_screenshot(page, "06_phone_entered")
+            # ============================================================
+            # STEP 3: Enter phone number
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 3: Entering phone number")
+            self.log.info("-" * 60)
+            self._current_step = SignupStep.PHONE_ENTERED
 
-                # Click continue
-                self.log.info("Clicking continue button...")
-                await signup_page.click_continue()
-                await page.wait_for_timeout(3000)
-                await self._take_screenshot(page, "07_after_continue")
+            self.log.info(f"Entering phone: {phone.formatted}")
+            await signup_page.enter_phone_number(phone)
+            await page.wait_for_timeout(1000)
+            await self._take_screenshot(page, "06_phone_entered")
 
-                # Check for errors
-                if await signup_page.has_error():
-                    error_msg = await signup_page.get_error_message()
-                    self.log.error(f"Error after phone entry: {error_msg}")
-                    await self._take_screenshot(page, "07_ERROR_phone_rejected")
-                    return self._create_result(
-                        success=False,
-                        step=self._current_step,
-                        error=error_msg or "Phone number rejected",
-                        start_time=start_time,
-                    )
+            # Click continue
+            self.log.info("Clicking continue button...")
+            await signup_page.click_continue()
+            await page.wait_for_timeout(3000)
+            await self._take_screenshot(page, "07_after_continue")
 
-                # ============================================================
-                # STEP 4: Wait for OTP screen
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 4: Waiting for OTP verification screen")
-                self.log.info("-" * 60)
-                self._current_step = SignupStep.OTP_REQUESTED
+            # Check for errors
+            if await signup_page.has_error():
+                error_msg = await signup_page.get_error_message()
+                self.log.error(f"Error after phone entry: {error_msg}")
+                await self._take_screenshot(page, "07_ERROR_phone_rejected")
+                return self._create_result(
+                    success=False,
+                    step=self._current_step,
+                    error=error_msg or "Phone number rejected",
+                    start_time=start_time,
+                )
 
-                otp_received = await signup_page.wait_for_otp_screen()
-                await self._take_screenshot(page, "08_otp_screen")
+            # ============================================================
+            # STEP 4: Wait for OTP screen
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 4: Waiting for OTP verification screen")
+            self.log.info("-" * 60)
+            self._current_step = SignupStep.OTP_REQUESTED
 
-                if not otp_received:
-                    error_msg = await signup_page.get_error_message()
-                    self.log.error(f"OTP screen not shown. Error: {error_msg}")
-                    await self._log_page_state(page, "No OTP screen")
-                    return self._create_result(
-                        success=False,
-                        step=self._current_step,
-                        error=error_msg or "OTP screen not shown",
-                        start_time=start_time,
-                    )
+            otp_received = await signup_page.wait_for_otp_screen()
+            await self._take_screenshot(page, "08_otp_screen")
 
-                self.log.info("OTP screen detected!")
+            if not otp_received:
+                error_msg = await signup_page.get_error_message()
+                self.log.error(f"OTP screen not shown. Error: {error_msg}")
+                await self._log_page_state(page, "No OTP screen")
+                return self._create_result(
+                    success=False,
+                    step=self._current_step,
+                    error=error_msg or "OTP screen not shown",
+                    start_time=start_time,
+                )
 
-                # ============================================================
-                # STEP 5: Handle OTP entry
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 5: Handling OTP entry")
-                self.log.info("-" * 60)
+            self.log.info("OTP screen detected!")
 
-                if otp_callback:
-                    self.log.info("Waiting for OTP code from callback...")
-                    otp_code = await otp_callback(phone.formatted)
+            # ============================================================
+            # STEP 5: Handle OTP entry
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 5: Handling OTP entry")
+            self.log.info("-" * 60)
 
-                    if otp_code:
-                        self.log.info(f"OTP received: {otp_code}")
-                        await signup_page.enter_otp(otp_code)
-                        await self._take_screenshot(page, "09_otp_entered")
-                        await signup_page.click_verify()
-                        self._current_step = SignupStep.OTP_VERIFIED
-                        await page.wait_for_timeout(3000)
-                        await self._take_screenshot(page, "10_after_otp_verify")
-                    else:
-                        self.log.error("OTP not received from callback")
-                        return self._create_result(
-                            success=False,
-                            step=self._current_step,
-                            error="OTP not received",
-                            start_time=start_time,
-                        )
-                else:
-                    # Manual OTP entry
-                    self.log.warning("=" * 50)
-                    self.log.warning("MANUAL OTP ENTRY REQUIRED")
-                    self.log.warning(f"Phone: {phone.formatted}")
-                    self.log.warning("Waiting for profile form (2 min timeout)...")
-                    self.log.warning("=" * 50)
+            if otp_callback:
+                self.log.info("Waiting for OTP code from callback...")
+                otp_code = await otp_callback(phone.formatted)
 
-                    # Wait for profile form (indicates OTP was entered)
-                    if not await signup_page.wait_for_profile_form(timeout=120000):
-                        self.log.error("Timeout waiting for manual OTP")
-                        await self._take_screenshot(page, "09_ERROR_otp_timeout")
-                        return self._create_result(
-                            success=False,
-                            step=self._current_step,
-                            error="Timeout waiting for manual OTP entry",
-                            start_time=start_time,
-                        )
+                if otp_code:
+                    self.log.info(f"OTP received: {otp_code}")
+                    await signup_page.enter_otp(otp_code)
+                    await self._take_screenshot(page, "09_otp_entered")
+                    await signup_page.click_verify()
                     self._current_step = SignupStep.OTP_VERIFIED
-                    self.log.info("OTP verified (profile form appeared)")
-
-                await self._take_screenshot(page, "11_after_otp")
-
-                # ============================================================
-                # STEP 6: Fill profile form
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 6: Filling profile form")
-                self.log.info("-" * 60)
-                self._current_step = SignupStep.PROFILE_COMPLETED
-
-                if await signup_page.wait_for_profile_form():
-                    self.log.info("Profile form detected - filling...")
-                    await signup_page.fill_profile(profile)
-                    await self._take_screenshot(page, "12_profile_filled")
-
-                    self.log.info("Clicking agree and continue...")
-                    await signup_page.agree_and_continue()
                     await page.wait_for_timeout(3000)
-                    await self._take_screenshot(page, "13_after_agree")
+                    await self._take_screenshot(page, "10_after_otp_verify")
                 else:
-                    self.log.warning("Profile form not found - may have skipped")
-
-                # ============================================================
-                # STEP 7: Verify signup success
-                # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 7: Verifying signup success")
-                self.log.info("-" * 60)
-
-                await page.wait_for_timeout(3000)
-                await self._log_page_state(page, "Final state")
-                await self._take_screenshot(page, "14_final_state")
-
-                if await signup_page.is_signup_successful():
-                    self._current_step = SignupStep.SIGNUP_COMPLETED
-                    self.log.info("=" * 50)
-                    self.log.info("SIGNUP SUCCESSFUL!")
-                    self.log.info("=" * 50)
-
-                    account = AccountCredentials(
-                        platform=self.platform,
-                        email=profile.email,
-                        password=profile.password,
-                        phone=phone.formatted,
-                        profile=profile,
-                        status=AccountStatus.ACTIVE,
-                    )
-
-                    return self._create_result(
-                        success=True,
-                        step=self._current_step,
-                        account=account,
-                        start_time=start_time,
-                    )
-                else:
-                    error_msg = await signup_page.get_error_message()
-                    self.log.error(f"Signup verification failed: {error_msg}")
-                    await self._take_screenshot(page, "14_ERROR_verification_failed")
+                    self.log.error("OTP not received from callback")
                     return self._create_result(
                         success=False,
                         step=self._current_step,
-                        error=error_msg or "Signup verification failed",
+                        error="OTP not received",
                         start_time=start_time,
                     )
+            else:
+                # Manual OTP entry
+                self.log.warning("=" * 50)
+                self.log.warning("MANUAL OTP ENTRY REQUIRED")
+                self.log.warning(f"Phone: {phone.formatted}")
+                self.log.warning("Waiting for profile form (2 min timeout)...")
+                self.log.warning("=" * 50)
+
+                # Wait for profile form (indicates OTP was entered)
+                if not await signup_page.wait_for_profile_form(timeout=120000):
+                    self.log.error("Timeout waiting for manual OTP")
+                    await self._take_screenshot(page, "09_ERROR_otp_timeout")
+                    return self._create_result(
+                        success=False,
+                        step=self._current_step,
+                        error="Timeout waiting for manual OTP entry",
+                        start_time=start_time,
+                    )
+                self._current_step = SignupStep.OTP_VERIFIED
+                self.log.info("OTP verified (profile form appeared)")
+
+            await self._take_screenshot(page, "11_after_otp")
+
+            # ============================================================
+            # STEP 6: Fill profile form
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 6: Filling profile form")
+            self.log.info("-" * 60)
+            self._current_step = SignupStep.PROFILE_COMPLETED
+
+            if await signup_page.wait_for_profile_form():
+                self.log.info("Profile form detected - filling...")
+                await signup_page.fill_profile(profile)
+                await self._take_screenshot(page, "12_profile_filled")
+
+                self.log.info("Clicking agree and continue...")
+                await signup_page.agree_and_continue()
+                await page.wait_for_timeout(3000)
+                await self._take_screenshot(page, "13_after_agree")
+            else:
+                self.log.warning("Profile form not found - may have skipped")
+
+            # ============================================================
+            # STEP 7: Verify signup success
+            # ============================================================
+            self.log.info("-" * 60)
+            self.log.info("STEP 7: Verifying signup success")
+            self.log.info("-" * 60)
+
+            await page.wait_for_timeout(3000)
+            await self._log_page_state(page, "Final state")
+            await self._take_screenshot(page, "14_final_state")
+
+            if await signup_page.is_signup_successful():
+                self._current_step = SignupStep.SIGNUP_COMPLETED
+                self.log.info("=" * 50)
+                self.log.info("SIGNUP SUCCESSFUL!")
+                self.log.info("=" * 50)
+
+                account = AccountCredentials(
+                    platform=self.platform,
+                    email=profile.email,
+                    password=profile.password,
+                    phone=phone.formatted,
+                    profile=profile,
+                    status=AccountStatus.ACTIVE,
+                )
+
+                return self._create_result(
+                    success=True,
+                    step=self._current_step,
+                    account=account,
+                    start_time=start_time,
+                )
+            else:
+                error_msg = await signup_page.get_error_message()
+                self.log.error(f"Signup verification failed: {error_msg}")
+                await self._take_screenshot(page, "14_ERROR_verification_failed")
+                return self._create_result(
+                    success=False,
+                    step=self._current_step,
+                    error=error_msg or "Signup verification failed",
+                    start_time=start_time,
+                )
 
         except PlaywrightTimeout as e:
             self.log.error(f"Timeout during signup: {e}")
@@ -470,6 +487,9 @@ class SignupOrchestrator(LoggerMixin):
                 error=str(e),
                 start_time=start_time,
             )
+        finally:
+            # Always stop browser
+            await browser_manager.stop()
 
     def _create_result(
         self,
