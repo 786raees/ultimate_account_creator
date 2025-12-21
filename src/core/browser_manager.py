@@ -5,8 +5,13 @@ Browser Manager
 Manages Playwright browser instances with proxy configuration,
 fingerprint randomization, and context management.
 Includes comprehensive logging for debugging.
+
+Supports two modes:
+1. Direct Playwright: Standard browser launch with fingerprinting
+2. MultiLoginX: Quick profiles with anti-fingerprint protection
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -25,6 +30,7 @@ from playwright.async_api import (
 )
 
 from src.config import get_settings
+from src.services.multiloginx_client import MultiLoginXClient, QuickProfileResult
 from src.types.enums import BrowserType
 from src.utils.logger import LoggerMixin
 from src.utils.fingerprint import generate_fingerprint, generate_fingerprint_for_phone, BrowserFingerprint
@@ -52,6 +58,7 @@ class BrowserManager(LoggerMixin):
         debug_mode: bool = True,
         rotate_proxy: bool = True,
         randomize_fingerprint: bool = True,
+        use_multiloginx: Optional[bool] = None,
     ) -> None:
         """
         Initialize the browser manager.
@@ -62,6 +69,8 @@ class BrowserManager(LoggerMixin):
             debug_mode: Enable debug logging and screenshots.
             rotate_proxy: Whether to rotate proxy port each session.
             randomize_fingerprint: Whether to randomize browser fingerprint.
+            use_multiloginx: Use MultiLoginX for browser profiles.
+                            If None, uses setting from config (MLX_ENABLED).
         """
         self.browser_type = browser_type
         self.use_proxy = use_proxy
@@ -70,12 +79,19 @@ class BrowserManager(LoggerMixin):
         self.randomize_fingerprint = randomize_fingerprint
         self.settings = get_settings()
 
+        # Use MLX if explicitly set, otherwise use config setting
+        self.use_multiloginx = use_multiloginx if use_multiloginx is not None else self.settings.multiloginx.enabled
+
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._current_fingerprint: Optional[BrowserFingerprint] = None
         self._current_proxy_port: Optional[int] = None
         self._phone_number: Optional[str] = None
         self._country_iso: Optional[str] = None  # ISO country code for proxy targeting
+
+        # MultiLoginX client and state
+        self._mlx_client: Optional[MultiLoginXClient] = None
+        self._mlx_profile_id: Optional[str] = None
 
         # Screenshot directory for debugging
         self.screenshot_dir = Path("./screenshots")
@@ -250,9 +266,9 @@ class BrowserManager(LoggerMixin):
                 "ignore_https_errors": True,
             }
         else:
-            # Default options
+            # Default options - Full HD viewport
             options = {
-                "viewport": {"width": 1920, "height": 1080},
+                "viewport": {"width": 1920, "height": 1080},  # Full HD
                 "user_agent": self._get_user_agent(),
                 "locale": "en-US",
                 "timezone_id": "America/New_York",
@@ -464,12 +480,28 @@ class BrowserManager(LoggerMixin):
         """
         Context manager for a complete browser session.
 
+        Routes to either MultiLoginX or direct Playwright based on config.
+
         Yields:
             Page instance for automation.
 
         Example:
             async with browser_manager.session() as page:
                 await page.goto("https://example.com")
+        """
+        if self.use_multiloginx:
+            async with self._mlx_session() as page:
+                yield page
+        else:
+            async with self._direct_session() as page:
+                yield page
+
+    @asynccontextmanager
+    async def _direct_session(self) -> AsyncGenerator[Page, None]:
+        """
+        Context manager for a direct Playwright browser session.
+
+        Uses standard Playwright browser launch with fingerprinting.
         """
         context: BrowserContext | None = None
         page: Page | None = None
@@ -491,6 +523,153 @@ class BrowserManager(LoggerMixin):
             if context:
                 await context.close()
             await self.stop()
+
+    @asynccontextmanager
+    async def _mlx_session(self) -> AsyncGenerator[Page, None]:
+        """
+        Context manager for a MultiLoginX browser session.
+
+        Creates a quick profile, connects via CDP, runs automation,
+        then stops the profile.
+        """
+        self.log.info("=" * 60)
+        self.log.info("STARTING MLX BROWSER SESSION")
+        self.log.info("=" * 60)
+
+        mlx_settings = self.settings.multiloginx
+        self._mlx_client = MultiLoginXClient(
+            base_url=mlx_settings.base_url,
+            api_url=mlx_settings.api_url,
+            email=mlx_settings.email,
+            password=mlx_settings.password,
+            timeout=mlx_settings.timeout,
+        )
+
+        profile_result: Optional[QuickProfileResult] = None
+        page: Page | None = None
+
+        try:
+            # Get rotated proxy port if enabled
+            if self.use_proxy and self.rotate_proxy and self.settings.proxy.rotate_per_request:
+                self._current_proxy_port = self.settings.proxy.get_rotated_port()
+            elif self.use_proxy:
+                self._current_proxy_port = self.settings.proxy.port
+
+            # Build proxy config for MLX
+            # Note: Use base username for MLX - MLX handles geo-targeting via fingerprinting
+            # Country-targeted username format may not work with MLX's proxy handling
+            proxy_config = None
+            if self.use_proxy and self.settings.proxy.username:
+                proxy_port = self._current_proxy_port or self.settings.proxy.port
+                proxy_config = {
+                    "host": self.settings.proxy.host,
+                    "type": "http",
+                    "port": proxy_port,
+                    "username": self.settings.proxy.username,  # Base username, not country-targeted
+                    "password": self.settings.proxy.password,
+                }
+                self.log.info(f"Proxy: {self.settings.proxy.host}:{proxy_port}")
+                self.log.info(f"Proxy User: {self.settings.proxy.username}")
+
+            # Create quick profile
+            profile_result = await self._mlx_client.create_quick_profile(
+                browser_type=mlx_settings.browser_type,
+                os_type=mlx_settings.os_type,
+                core_version=mlx_settings.core_version,
+                is_headless=self.settings.browser.headless,
+                proxy=proxy_config,
+                automation="playwright",
+            )
+
+            if not profile_result.success:
+                raise RuntimeError(f"Failed to create MLX profile: {profile_result.error}")
+
+            self._mlx_profile_id = profile_result.profile_id
+            self.log.info(f"MLX Profile created: {profile_result.profile_id}")
+            self.log.info(f"Connecting via CDP: {profile_result.cdp_url}")
+
+            # Small delay to let browser fully initialize
+            await asyncio.sleep(2)
+
+            # Connect to the browser via CDP
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                profile_result.cdp_url,
+                timeout=30000,
+            )
+
+            # Get the existing context (MLX creates one)
+            contexts = self._browser.contexts
+            if contexts:
+                context = contexts[0]
+                self.log.info("Using existing MLX browser context")
+            else:
+                # Fallback: create new context (shouldn't happen with quick profiles)
+                context = await self._browser.new_context()
+                self.log.info("Created new browser context")
+
+            # Set timeouts
+            context.set_default_timeout(self.settings.browser.default_timeout)
+            context.set_default_navigation_timeout(self.settings.browser.navigation_timeout)
+
+            # Get existing page or create new one
+            pages = context.pages
+            if pages:
+                page = pages[0]
+                self.log.info("Using existing page")
+            else:
+                page = await context.new_page()
+                self.log.info("Created new page")
+
+            # Set up page logging
+            self._setup_page_logging(page)
+
+            # Warm up the proxy connection before real navigation
+            # This gives MLX time to complete proxy authentication
+            self.log.info("Warming up proxy connection...")
+            await page.goto("about:blank")
+            await asyncio.sleep(1)
+
+            self.log.info("MLX session ready!")
+            yield page
+
+        except Exception as e:
+            self.log.error(f"MLX session error: {e}")
+            if page:
+                try:
+                    await self.take_debug_screenshot(page, "mlx_error")
+                except Exception:
+                    pass
+            raise
+
+        finally:
+            # Clean up
+            self.log.info("Cleaning up MLX session...")
+
+            if self._browser:
+                try:
+                    await self._browser.close()
+                except Exception as e:
+                    self.log.debug(f"Error closing browser: {e}")
+                self._browser = None
+
+            if self._playwright:
+                try:
+                    await self._playwright.stop()
+                except Exception as e:
+                    self.log.debug(f"Error stopping playwright: {e}")
+                self._playwright = None
+
+            # Stop the MLX profile
+            if self._mlx_client and self._mlx_profile_id:
+                await self._mlx_client.stop_profile(self._mlx_profile_id)
+                self._mlx_profile_id = None
+
+            if self._mlx_client:
+                await self._mlx_client.close()
+                self._mlx_client = None
+
+            self.log.info("MLX session cleanup complete")
 
     @asynccontextmanager
     async def page_context(self) -> AsyncGenerator[Page, None]:

@@ -3,6 +3,7 @@ Airbnb Signup Runner
 ====================
 
 Command-line runner for Airbnb signup automation.
+Runs in a continuous loop, creating new MLX profiles for each signup.
 """
 
 import asyncio
@@ -20,9 +21,26 @@ from src.utils.logger import setup_logger, get_logger
 from src.utils.phone_manager import PhoneManager
 
 
+async def no_otp_callback(phone: str) -> str:
+    """
+    No-op OTP callback - returns empty to trigger failure.
+
+    When no OTP automation is configured, this immediately
+    returns empty so the signup fails and moves to next number.
+
+    Args:
+        phone: The phone number (not used).
+
+    Returns:
+        Empty string to indicate no OTP available.
+    """
+    # No OTP automation - return empty to fail immediately
+    return ""
+
+
 async def manual_otp_callback(phone: str) -> str:
     """
-    Manual OTP entry callback.
+    Manual OTP entry callback (for testing/debugging).
 
     Prompts user to enter the OTP code received on the phone.
 
@@ -49,8 +67,13 @@ async def manual_otp_callback(phone: str) -> str:
     return otp
 
 
-async def run_single_signup() -> None:
-    """Run a single Airbnb signup attempt."""
+async def run_single_signup(use_manual_otp: bool = False) -> None:
+    """
+    Run a single Airbnb signup attempt.
+
+    Args:
+        use_manual_otp: If True, wait for manual OTP input. If False, fail at OTP step.
+    """
     logger = get_logger("AirbnbRunner")
     settings = get_settings()
 
@@ -66,7 +89,7 @@ async def run_single_signup() -> None:
 
     # Log phone stats
     stats = phone_manager.get_stats()
-    logger.info(f"Phone stats: {stats['available']} available, {stats['used']} used")
+    logger.info(f"Phone stats: {stats['available']} available, {stats['success']} success, {stats['failed']} failed")
 
     if stats['available'] == 0:
         logger.error("No available phone numbers. Exiting.")
@@ -82,9 +105,10 @@ async def run_single_signup() -> None:
         data_generator=data_generator,
     )
 
-    # Run signup
+    # Run signup - use manual OTP callback only if explicitly requested
+    otp_cb = manual_otp_callback if use_manual_otp else None
     result = await orchestrator.run_single_signup(
-        otp_callback=manual_otp_callback
+        otp_callback=otp_cb
     )
 
     # Report result
@@ -107,9 +131,17 @@ async def run_single_signup() -> None:
     print(f"{'='*50}\n")
 
 
-async def run_all_phones(delay_between: int = 10) -> None:
+async def run_continuous_loop(delay_between: int = 10) -> None:
     """
-    Run Airbnb signup for ALL available phone numbers.
+    Run Airbnb signup in a continuous loop.
+
+    Each iteration:
+    1. Gets next available phone number
+    2. Creates a new MLX profile
+    3. Runs signup automation
+    4. Closes profile
+    5. Saves result (success/failed)
+    6. Moves to next phone
 
     Args:
         delay_between: Delay between each signup attempt in seconds.
@@ -117,9 +149,16 @@ async def run_all_phones(delay_between: int = 10) -> None:
     logger = get_logger("AirbnbRunner")
     settings = get_settings()
 
-    logger.info("Starting Airbnb signup for ALL phone numbers")
+    print(f"\n{'='*60}")
+    print("AIRBNB CONTINUOUS SIGNUP LOOP")
+    print(f"{'='*60}")
+    print("Each signup creates a fresh MLX profile")
+    print(f"Delay between attempts: {delay_between}s")
+    print(f"Success file: data/success.txt")
+    print(f"Failed file: data/failed.txt")
+    print(f"{'='*60}\n")
 
-    # Initialize phone manager
+    # Initialize phone manager once
     phone_manager = PhoneManager(
         phone_list_path=settings.paths.phone_list_airbnb,
         state_path=settings.paths.used_phones_path,
@@ -127,85 +166,127 @@ async def run_all_phones(delay_between: int = 10) -> None:
     )
     await phone_manager.load()
 
-    # Get stats
+    # Get initial stats
     stats = phone_manager.get_stats()
     total_available = stats['available']
-    logger.info(f"Phone stats: {total_available} available, {stats['used']} already used, {stats['total']} total")
 
     if total_available == 0:
         logger.error("No available phone numbers. Exiting.")
         return
 
-    print(f"\n{'='*60}")
-    print(f"RUNNING SIGNUP FOR ALL {total_available} AVAILABLE PHONE NUMBERS")
-    print(f"{'='*60}\n")
+    print(f"Starting with {total_available} available phone numbers\n")
 
-    # Initialize data generator
-    data_generator = DataGenerator()
-
-    # Initialize orchestrator
-    orchestrator = SignupOrchestrator(
-        platform=Platform.AIRBNB,
-        phone_manager=phone_manager,
-        data_generator=data_generator,
-    )
-
-    # Run for all available phones
-    results = []
+    # Track results
+    success_count = 0
+    fail_count = 0
     attempt = 0
 
-    while phone_manager.available_count > 0:
-        attempt += 1
+    # Run until no more phones available
+    while True:
+        # Re-check available count (file may have been modified)
         remaining = phone_manager.available_count
 
-        print(f"\n{'='*50}")
-        print(f"ATTEMPT {attempt} - {remaining} phones remaining")
-        print(f"{'='*50}")
+        if remaining == 0:
+            print(f"\n{'='*60}")
+            print("ALL PHONE NUMBERS PROCESSED")
+            print(f"{'='*60}")
+            break
 
-        # Run single signup
-        result = await orchestrator.run_single_signup(
-            otp_callback=manual_otp_callback
+        attempt += 1
+
+        # Show which phone will be processed next
+        next_phone = phone_manager.get_next()
+        if not next_phone:
+            print(f"\n{'='*60}")
+            print("NO MORE PHONES AVAILABLE")
+            print(f"{'='*60}")
+            break
+
+        print(f"\n{'='*60}")
+        print(f"ATTEMPT {attempt} | {remaining} phones remaining")
+        print(f"Next phone: {next_phone.formatted}")
+        print(f"Success: {success_count} | Failed: {fail_count}")
+        print(f"{'='*60}\n")
+
+        # Initialize fresh data generator for each attempt
+        data_generator = DataGenerator()
+
+        # Initialize fresh orchestrator for each attempt
+        # Each signup will create a new MLX profile automatically
+        orchestrator = SignupOrchestrator(
+            platform=Platform.AIRBNB,
+            phone_manager=phone_manager,
+            data_generator=data_generator,
         )
-        results.append(result)
 
-        # Report result for this attempt
-        if result.success and result.account:
-            print(f"✓ SUCCESS: {result.account.phone}")
-        else:
-            print(f"✗ FAILED: {result.error_message}")
+        try:
+            # Run single signup (creates new MLX profile, runs, closes)
+            # No OTP automation - but we check if OTP screen appears:
+            #   - OTP screen appears = SUCCESS (phone is valid, SMS sent)
+            #   - No OTP screen (captcha/error) = FAILED (phone rejected)
+            result = await orchestrator.run_single_signup(
+                otp_callback=None  # No OTP automation - just verify phone validity
+            )
 
-        # Delay before next attempt (if there are more phones)
-        if phone_manager.available_count > 0 and delay_between > 0:
-            print(f"Waiting {delay_between}s before next attempt...")
+            if result.success:
+                success_count += 1
+                print(f"\n✓ SUCCESS #{success_count} - OTP SENT!")
+                print(f"  Phone verified: OTP screen appeared")
+                print(f"  (Phone number is valid, SMS was sent)")
+                if result.account:
+                    print(f"  Email: {result.account.email}")
+                    print(f"  Phone: {result.account.phone}")
+            else:
+                fail_count += 1
+                print(f"\n✗ FAILED #{fail_count} - NO OTP")
+                print(f"  Error: {result.error_message}")
+                print(f"  (Captcha, rate limit, or phone rejected)")
+                print(f"  Step: {result.step_reached}")
+
+        except KeyboardInterrupt:
+            print("\n\nInterrupted by user!")
+            break
+
+        except Exception as e:
+            fail_count += 1
+            logger.exception(f"Unexpected error during signup: {e}")
+            print(f"\n✗ FAILED #{fail_count} (exception)")
+            print(f"  Error: {e}")
+            # Don't break - continue to next phone
+            print("  Continuing to next phone...")
+
+        # Wait before next attempt
+        remaining = phone_manager.available_count
+        if remaining > 0:
+            print(f"\nWaiting {delay_between}s before next attempt...")
             await asyncio.sleep(delay_between)
 
     # Final summary
-    successes = sum(1 for r in results if r.success)
-    failures = len(results) - successes
+    total_processed = success_count + fail_count
+    success_rate = (success_count / total_processed * 100) if total_processed > 0 else 0
 
     print(f"\n{'='*60}")
-    print("FINAL SUMMARY - ALL PHONES PROCESSED")
+    print("FINAL SUMMARY")
     print(f"{'='*60}")
-    print(f"Total Attempts: {len(results)}")
-    print(f"Successful: {successes}")
-    print(f"Failed: {failures}")
-    print(f"Success Rate: {(successes/len(results)*100) if results else 0:.1f}%")
-
-    if successes > 0:
-        print(f"\nSuccessful Accounts:")
-        for i, result in enumerate(results):
-            if result.success and result.account:
-                print(f"  {i+1}. {result.account.email} ({result.account.phone})")
-
-    if failures > 0:
-        print(f"\nFailed Attempts:")
-        for i, result in enumerate(results):
-            if not result.success:
-                phone_info = result.account.phone if result.account else "Unknown"
-                print(f"  {i+1}. Phone: {phone_info}, Step: {result.step_reached}, Error: {result.error_message}")
-
-    print(f"\nScreenshots saved to: ./screenshots/<phone_number>/")
+    print(f"Total Attempts: {total_processed}")
+    print(f"OTP Sent (valid phones): {success_count}")
+    print(f"Failed (captcha/rejected): {fail_count}")
+    print(f"Success Rate: {success_rate:.1f}%")
+    print(f"\nResults saved to:")
+    print(f"  Valid phones (OTP sent): data/success.txt")
+    print(f"  Failed phones: data/failed.txt")
     print(f"{'='*60}\n")
+
+
+async def run_all_phones(delay_between: int = 10) -> None:
+    """
+    Run Airbnb signup for ALL available phone numbers.
+    Alias for run_continuous_loop for compatibility.
+
+    Args:
+        delay_between: Delay between each signup attempt in seconds.
+    """
+    await run_continuous_loop(delay_between=delay_between)
 
 
 async def run_batch_signup(count: int = 5) -> None:
@@ -240,18 +321,26 @@ async def run_batch_signup(count: int = 5) -> None:
         logger.error("No available phone numbers. Exiting.")
         return
 
-    # Initialize orchestrator
-    orchestrator = SignupOrchestrator(
-        platform=Platform.AIRBNB,
-        phone_manager=phone_manager,
-    )
+    results = []
+    for i in range(count):
+        print(f"\n{'='*50}")
+        print(f"BATCH SIGNUP {i + 1}/{count}")
+        print(f"{'='*50}")
 
-    # Run batch
-    results = await orchestrator.run_batch_signup(
-        count=count,
-        otp_callback=manual_otp_callback,
-        delay_between=10,
-    )
+        # Fresh orchestrator for each attempt
+        orchestrator = SignupOrchestrator(
+            platform=Platform.AIRBNB,
+            phone_manager=phone_manager,
+        )
+
+        result = await orchestrator.run_single_signup(
+            otp_callback=manual_otp_callback,
+        )
+        results.append(result)
+
+        if i < count - 1:
+            print(f"\nWaiting 10s before next attempt...")
+            await asyncio.sleep(10)
 
     # Summary
     successes = sum(1 for r in results if r.success)
@@ -299,7 +388,12 @@ def main():
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Run signup for ALL available phone numbers"
+        help="Run signup for ALL available phone numbers (continuous loop)"
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Same as --all: run continuous loop for all phones"
     )
     parser.add_argument(
         "--delay",
@@ -310,8 +404,8 @@ def main():
     args = parser.parse_args()
 
     # Run appropriate mode
-    if args.all:
-        asyncio.run(run_all_phones(delay_between=args.delay))
+    if args.all or args.loop:
+        asyncio.run(run_continuous_loop(delay_between=args.delay))
     elif args.batch > 0:
         asyncio.run(run_batch_signup(args.batch))
     else:

@@ -6,6 +6,8 @@ Page object for the Airbnb home/landing page.
 Handles navigation to signup flow.
 """
 
+import asyncio
+
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 
 from src.config.constants import PlatformDomains
@@ -49,15 +51,53 @@ class AirbnbHomePage(BasePage):
         """Check if using direct signup flow."""
         return self.PLATFORM_CONFIG.is_direct_signup
 
+    async def _safe_goto(self, url: str, retries: int = 3) -> bool:
+        """
+        Navigate to URL with retry logic for MLX proxy race conditions.
+
+        MLX proxy authentication is async, so the first request may fail
+        with ERR_INVALID_AUTH_CREDENTIALS while the proxy handshake completes.
+        The browser retries internally and succeeds, but Playwright throws.
+
+        Args:
+            url: URL to navigate to.
+            retries: Number of retry attempts.
+
+        Returns:
+            True if navigation succeeded.
+        """
+        last_error = None
+
+        for attempt in range(retries):
+            try:
+                await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                return True
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check if this is the MLX proxy race condition
+                if "ERR_INVALID_AUTH_CREDENTIALS" in error_str or "407" in error_str:
+                    self.log.warning(f"Proxy auth race condition (attempt {attempt + 1}/{retries}), retrying...")
+                    await asyncio.sleep(2)  # Let MLX proxy settle
+                else:
+                    # Different error - don't retry
+                    raise
+
+        # All retries exhausted
+        self.log.error(f"Navigation failed after {retries} attempts")
+        raise last_error
+
     async def navigate_to_signup(self) -> None:
         """
         Navigate to signup - either direct URL or via modal.
 
         Uses the flow configured in PLATFORM_CONFIG.
+        Includes retry logic for MLX proxy race conditions.
         """
         if self.is_direct_signup:
             self.log.info(f"Using direct signup URL: {self.signup_url}")
-            await self.page.goto(self.signup_url)
+            await self._safe_goto(self.signup_url)
             await self.page.wait_for_load_state("domcontentloaded")
         else:
             self.log.info("Using modal signup flow")

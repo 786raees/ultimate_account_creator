@@ -266,39 +266,130 @@ class AirbnbSignupPage(BasePage):
     # OTP Verification
     # -------------------------------------------------------------------------
 
-    async def wait_for_otp_screen(self, timeout: int = 1200000) -> bool:
+    async def wait_for_otp_screen(self, timeout: int = 30000) -> bool:
         """
         Wait for the OTP verification screen.
+
+        IMPORTANT: Checks for error messages FIRST before checking for OTP indicators.
+        This prevents false positives when error text appears on same page as "Confirm your number".
 
         Args:
             timeout: Maximum time to wait.
 
         Returns:
-            True if OTP screen appeared.
+            True if OTP screen appeared AND no errors (SMS was sent).
+            False if error/captcha appeared (phone failed).
         """
-        self.log.info("Waiting for OTP verification screen...")
+        self.log.info("Waiting for OTP screen or error message...")
 
+        # Known failure messages - check these FIRST before anything else!
+        # These take priority over any OTP indicators
+        failure_texts = [
+            "you've reached the max confirmation attempts",
+            "max confirmation attempts",
+            "try again in 24 hours",
+            "phone number isn't supported",
+            "isn't supported",
+            "not supported",
+            "sign up using a different method",
+            "different method",
+            "too many attempts",
+            "rate limit",
+            "temporarily blocked",
+            "try again later",
+            "something went wrong",
+            "we couldn't send",
+            "couldn't send a code",
+            "unable to send",
+            "invalid phone",
+            "phone number is invalid",
+        ]
+
+        # Captcha indicators (also means failure)
+        captcha_indicators = [
+            'iframe[src*="captcha"]',
+            'iframe[src*="arkoselabs"]',
+            'iframe[src*="funcaptcha"]',
+            '#captcha',
+            '[data-testid="captcha"]',
+            'div:has-text("verify you\'re human")',
+            'div:has-text("security check")',
+        ]
+
+        # OTP success indicators - ONLY checked if no errors found
+        # Note: "Confirm your number" can appear WITH error messages, so we must check errors first
         otp_indicators = [
             'input[inputmode="numeric"]',
             'input[autocomplete="one-time-code"]',
-            'div:has-text("Enter the code")',
-            'div:has-text("Confirm your number")',
-            'h1:has-text("Confirm")',
-            'text="verification code"',
         ]
 
-        per_selector_timeout = timeout // len(otp_indicators)
+        check_interval = 1000  # Check every 1 second
+        elapsed = 0
 
-        for selector in otp_indicators:
+        while elapsed < timeout:
+            # ============================================================
+            # STEP 1: Check for ERROR text FIRST (highest priority)
+            # ============================================================
             try:
-                self.log.debug(f"Checking OTP indicator: {selector}")
-                await self.page.wait_for_selector(selector, timeout=per_selector_timeout)
-                self.log.info(f"OTP screen detected with: {selector}")
-                return True
-            except PlaywrightTimeout:
-                continue
+                page_text = await self.page.inner_text('body')
+                page_text_lower = page_text.lower()
 
-        self.log.warning("OTP screen not detected within timeout")
+                for failure_text in failure_texts:
+                    if failure_text.lower() in page_text_lower:
+                        self.log.error(f"=" * 50)
+                        self.log.error(f"FAILURE DETECTED!")
+                        self.log.error(f"Error text found: '{failure_text}'")
+                        self.log.error(f"=" * 50)
+                        return False
+            except Exception as e:
+                self.log.warning(f"Error checking page text: {e}")
+
+            # ============================================================
+            # STEP 2: Check for CAPTCHA (second priority)
+            # ============================================================
+            for captcha_sel in captcha_indicators:
+                try:
+                    captcha = self.page.locator(captcha_sel).first
+                    if await captcha.is_visible(timeout=300):
+                        self.log.error(f"CAPTCHA detected: {captcha_sel}")
+                        return False
+                except:
+                    continue
+
+            # ============================================================
+            # STEP 3: Check for OTP INPUT field (success indicator)
+            # Only if no errors were found above
+            # ============================================================
+            for otp_sel in otp_indicators:
+                try:
+                    otp_element = self.page.locator(otp_sel).first
+                    if await otp_element.is_visible(timeout=300):
+                        # Double-check: make sure no error text appeared
+                        page_text_recheck = await self.page.inner_text('body')
+                        page_text_lower_recheck = page_text_recheck.lower()
+
+                        has_error = False
+                        for failure_text in failure_texts:
+                            if failure_text.lower() in page_text_lower_recheck:
+                                self.log.error(f"Error found on recheck: '{failure_text}'")
+                                has_error = True
+                                break
+
+                        if has_error:
+                            return False
+
+                        self.log.info(f"OTP input field detected: {otp_sel}")
+                        self.log.info("No error messages found - SMS was sent successfully!")
+                        return True
+                except:
+                    continue
+
+            # Wait before next check
+            await self.page.wait_for_timeout(check_interval)
+            elapsed += check_interval
+            self.log.debug(f"Waiting for OTP/error... {elapsed//1000}s / {timeout//1000}s")
+
+        self.log.warning(f"Timeout after {timeout//1000}s - no OTP screen or error detected")
         return False
 
     async def enter_otp(self, otp_code: str) -> None:
@@ -520,10 +611,36 @@ class AirbnbSignupPage(BasePage):
 
     async def get_error_message(self) -> str | None:
         """Get the current error message if any."""
+        # Known error patterns to look for in page text
+        error_patterns = [
+            "max confirmation attempts",
+            "Try again in 24 hours",
+            "phone number isn't supported",
+            "sign up using a different method",
+            "too many attempts",
+            "temporarily blocked",
+            "try again later",
+            "invalid phone",
+            "verify you're human",
+        ]
+
+        # First check page text for known error patterns
+        try:
+            page_text = await self.page.inner_text('body')
+            page_text_lower = page_text.lower()
+            for pattern in error_patterns:
+                if pattern.lower() in page_text_lower:
+                    return pattern
+        except:
+            pass
+
+        # Then check error elements
         error_selectors = [
             '[role="alert"]',
             'div[class*="error"]',
             '[data-testid="error-message"]',
+            'div[class*="Error"]',
+            'span[class*="error"]',
         ]
 
         for selector in error_selectors:

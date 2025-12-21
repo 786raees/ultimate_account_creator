@@ -26,6 +26,9 @@ python -m src.main --platform airbnb --headless
 # Debug mode with verbose logging
 python -m src.main --platform airbnb --verbose
 
+# Disable MultiLoginX (use direct Playwright)
+python -m src.main --platform airbnb --no-multiloginx
+
 # Run Airbnb runner directly
 python -m src.runners.airbnb_runner
 ```
@@ -90,8 +93,43 @@ Settings use Pydantic with nested configuration classes in `src/config/settings.
 - `FingerprintSettings` (FINGERPRINT_* env vars)
 - `CaptchaSettings` (CAPTCHA_* env vars)
 - `PathSettings` (file paths)
+- `MultiLoginXSettings` (MLX_* env vars)
 
 Access via cached singleton: `get_settings()`
+
+### MultiLoginX Integration
+
+The framework uses MultiLoginX for browser profile management. This provides:
+- **Anti-fingerprint protection**: Each profile has unique browser fingerprints
+- **Profile isolation**: Each signup uses a fresh, isolated browser profile
+- **Rotating proxies**: Proxy port is automatically rotated for each profile
+
+**How it works:**
+1. At the start of each signup, a new "quick profile" is created via MultiLoginX API
+2. The profile includes the country-matched fingerprint and rotated proxy
+3. Playwright connects to the profile's browser via Chrome DevTools Protocol (CDP)
+4. After the signup (success or failure), the profile is automatically stopped
+
+**Configuration (env vars):**
+```bash
+MLX_ENABLED=true                              # Enable/disable MultiLoginX
+MLX_EMAIL=your@email.com                      # MultiLoginX account email
+MLX_PASSWORD=yourpassword                     # Account password (plain or MD5 hashed)
+MLX_BASE_URL=https://launcher.mlx.yt:45001    # MultiLoginX launcher API URL
+MLX_API_URL=https://api.multilogin.com        # MLX API URL for authentication
+MLX_TIMEOUT=60                                # API request timeout (seconds)
+MLX_BROWSER_TYPE=mimic                        # Browser type (mimic = Chromium-based)
+MLX_CORE_VERSION=132                          # Browser core version
+MLX_OS_TYPE=windows                           # OS type (windows, linux, macos)
+```
+
+**API Endpoints used:**
+- `POST /api/v3/profile/quick` - Create and start a quick profile
+- `GET /api/v1/profile/stop?profile_id=...` - Stop a profile
+
+**Files:**
+- `src/services/multiloginx_client.py` - MultiLoginX API client
+- `src/core/browser_manager.py` - Browser lifecycle with MultiLoginX support
 
 ### Adding a New Platform
 
@@ -126,7 +164,8 @@ Arkose Labs FunCaptcha detected. CAPTCHA solver integration placeholder in `src/
 ## Important Files
 
 - `src/services/signup_orchestrator.py` - Main signup flow logic with step-by-step screenshots
-- `src/core/browser_manager.py` - Playwright browser lifecycle with fingerprinting
+- `src/services/multiloginx_client.py` - MultiLoginX API client for profile management
+- `src/core/browser_manager.py` - Playwright browser lifecycle with MultiLoginX/fingerprinting
 - `src/pages/airbnb/selectors.py` - All Airbnb UI selectors (multi-language support)
 - `src/config/settings.py` - All configuration with env var mapping
 - `src/utils/fingerprint.py` - Browser fingerprint generation per country

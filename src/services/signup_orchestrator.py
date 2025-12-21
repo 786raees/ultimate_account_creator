@@ -325,31 +325,53 @@ class SignupOrchestrator(LoggerMixin):
                 self.log.info("-" * 60)
                 self._current_step = SignupStep.OTP_REQUESTED
 
-                otp_received = await signup_page.wait_for_otp_screen()
+                otp_screen_appeared = await signup_page.wait_for_otp_screen()
                 await self._take_screenshot(page, "08_otp_screen")
 
-                if not otp_received:
+                if not otp_screen_appeared:
+                    # OTP screen did NOT appear - this means:
+                    # - CAPTCHA appeared, or
+                    # - "Retries exceeded, try again in 24 hours", or
+                    # - Phone number was rejected/invalid
+                    # This is a FAILURE - phone number didn't work
                     error_msg = await signup_page.get_error_message()
-                    self.log.error(f"OTP screen not shown. Error: {error_msg}")
-                    await self._log_page_state(page, "No OTP screen")
+                    self.log.error(f"OTP screen not shown - phone FAILED")
+                    self.log.error(f"Error: {error_msg or 'Unknown (captcha/rate limit)'}")
+                    await self._log_page_state(page, "No OTP screen - failure")
                     return self._create_result(
                         success=False,
                         step=self._current_step,
-                        error=error_msg or "OTP screen not shown",
+                        error=error_msg or "OTP screen not shown (captcha/rate limit)",
                         start_time=start_time,
                     )
 
-                self.log.info("OTP screen detected!")
-
                 # ============================================================
-                # STEP 5: Handle OTP entry
+                # OTP SCREEN APPEARED = SUCCESS!
                 # ============================================================
-                self.log.info("-" * 60)
-                self.log.info("STEP 5: Handling OTP entry")
-                self.log.info("-" * 60)
+                # If we reach here, it means:
+                # - Airbnb accepted the phone number
+                # - SMS with OTP was sent
+                # - The phone number is VALID and WORKING
+                #
+                # This is a SUCCESS even without OTP automation!
+                # ============================================================
+                self.log.info("=" * 50)
+                self.log.info("OTP SCREEN DETECTED - PHONE NUMBER IS VALID!")
+                self.log.info(f"Phone: {phone.formatted}")
+                self.log.info("SMS was sent successfully - marking as SUCCESS")
+                self.log.info("=" * 50)
 
+                self._current_step = SignupStep.OTP_REQUESTED
+                await self._take_screenshot(page, "08_otp_success_phone_valid")
+
+                # If we have OTP automation, continue with the flow
                 if otp_callback:
-                    self.log.info("Waiting for OTP code from callback...")
+                    self.log.info("-" * 60)
+                    self.log.info("STEP 5: Handling OTP entry (automation available)")
+                    self.log.info("-" * 60)
+
+                    # Try to get OTP from automated callback
+                    self.log.info("Requesting OTP from callback...")
                     otp_code = await otp_callback(phone.formatted)
 
                     if otp_code:
@@ -361,33 +383,26 @@ class SignupOrchestrator(LoggerMixin):
                         await page.wait_for_timeout(3000)
                         await self._take_screenshot(page, "10_after_otp_verify")
                     else:
-                        self.log.error("OTP not received from callback")
+                        # OTP callback returned empty - but phone is still valid!
+                        # Mark as SUCCESS because OTP screen appeared
+                        self.log.info("OTP callback returned no code, but phone is valid")
                         return self._create_result(
-                            success=False,
+                            success=True,  # SUCCESS - OTP screen appeared
                             step=self._current_step,
-                            error="OTP not received",
+                            error=None,
                             start_time=start_time,
                         )
                 else:
-                    # Manual OTP entry
-                    self.log.warning("=" * 50)
-                    self.log.warning("MANUAL OTP ENTRY REQUIRED")
-                    self.log.warning(f"Phone: {phone.formatted}")
-                    self.log.warning("Waiting for profile form (2 min timeout)...")
-                    self.log.warning("=" * 50)
-
-                    # Wait for profile form (indicates OTP was entered)
-                    if not await signup_page.wait_for_profile_form(timeout=120000):
-                        self.log.error("Timeout waiting for manual OTP")
-                        await self._take_screenshot(page, "09_ERROR_otp_timeout")
-                        return self._create_result(
-                            success=False,
-                            step=self._current_step,
-                            error="Timeout waiting for manual OTP entry",
-                            start_time=start_time,
-                        )
-                    self._current_step = SignupStep.OTP_VERIFIED
-                    self.log.info("OTP verified (profile form appeared)")
+                    # No OTP callback - but phone is still VALID!
+                    # Mark as SUCCESS and move to next number
+                    self.log.info("No OTP automation - but phone number is VALID!")
+                    self.log.info("Moving to next number...")
+                    return self._create_result(
+                        success=True,  # SUCCESS - OTP screen appeared = phone is valid
+                        step=self._current_step,
+                        error=None,
+                        start_time=start_time,
+                    )
 
                 await self._take_screenshot(page, "11_after_otp")
 

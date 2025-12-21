@@ -4,12 +4,11 @@ Phone Number Manager
 
 Manages phone numbers for signup operations including:
 - Loading phone lists from files
-- Tracking used/available numbers via CSV
+- Tracking used/available numbers
+- Separate files for success and failed numbers
 - Persisting usage state
 """
 
-import csv
-from datetime import datetime
 from pathlib import Path
 
 import aiofiles
@@ -18,16 +17,18 @@ from src.types.enums import Platform
 from src.types.models import PhoneNumber
 from src.utils.logger import LoggerMixin
 
-# Hardcoded CSV path relative to project root
+# File paths relative to project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-USED_PHONES_CSV = PROJECT_ROOT / "data" / "state" / "used_phones.csv"
+DATA_DIR = PROJECT_ROOT / "data"
+SUCCESS_FILE = DATA_DIR / "success.txt"
+FAILED_FILE = DATA_DIR / "failed.txt"
 
 
 class PhoneManager(LoggerMixin):
     """
     Manages phone numbers for signup operations.
 
-    Uses a simple CSV file to track used phone numbers.
+    Uses separate text files for success and failed numbers.
     """
 
     def __init__(
@@ -41,33 +42,41 @@ class PhoneManager(LoggerMixin):
 
         Args:
             phone_list_path: Path to file containing phone numbers.
-            state_path: Ignored - uses hardcoded CSV path instead.
+            state_path: Ignored - uses hardcoded paths instead.
             platform: Platform these numbers are designated for.
         """
         self.phone_list_path = Path(phone_list_path)
         self.platform = platform
-        self.csv_path = USED_PHONES_CSV
 
         self._all_phones: list[PhoneNumber] = []
-        self._used_numbers: set[str] = set()
+        self._success_numbers: set[str] = set()
+        self._failed_numbers: set[str] = set()
         self._loaded = False
 
     async def load(self) -> None:
         """
-        Load phone numbers and check CSV for used ones.
+        Load phone numbers and check processed files.
         """
+        # Ensure data directory exists
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+
         # Load all phone numbers from file
         await self._load_phone_list()
 
-        # Load used numbers from CSV
-        self._load_used_from_csv()
+        # Load processed numbers
+        self._success_numbers = self._load_numbers_from_file(SUCCESS_FILE)
+        self._failed_numbers = self._load_numbers_from_file(FAILED_FILE)
 
         self._loaded = True
-        available = len(self._all_phones) - len(self._used_numbers)
-        self.log.info(
-            f"Loaded {available} available phones "
-            f"({len(self._used_numbers)} already used in CSV)"
-        )
+
+        processed = len(self._success_numbers) + len(self._failed_numbers)
+        available = len(self._all_phones) - processed
+
+        self.log.info(f"Phone stats:")
+        self.log.info(f"  Total: {len(self._all_phones)}")
+        self.log.info(f"  Success: {len(self._success_numbers)}")
+        self.log.info(f"  Failed: {len(self._failed_numbers)}")
+        self.log.info(f"  Available: {available}")
 
     async def _load_phone_list(self) -> None:
         """Load phone numbers from the file."""
@@ -91,57 +100,37 @@ class PhoneManager(LoggerMixin):
         self._all_phones = phones
         self.log.debug(f"Loaded {len(phones)} phone numbers from file")
 
-    def _load_used_from_csv(self) -> None:
-        """Load used phone numbers from CSV file."""
-        self._used_numbers = set()
+    def _load_numbers_from_file(self, filepath: Path) -> set[str]:
+        """Load phone numbers from a text file (one per line)."""
+        numbers = set()
 
-        if not self.csv_path.exists():
-            self.log.debug(f"No CSV file found at {self.csv_path}, starting fresh")
-            return
-
-        try:
-            with open(self.csv_path, "r", newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    phone = row.get("phone_number", "").strip()
-                    if phone:
-                        self._used_numbers.add(phone)
-            self.log.info(f"Loaded {len(self._used_numbers)} used numbers from CSV: {self.csv_path}")
-        except Exception as e:
-            self.log.error(f"Error reading CSV: {e}")
-            self._used_numbers = set()
-
-    def _append_to_csv(self, phone: str, success: bool) -> None:
-        """Append a used phone number to the CSV file."""
-        # Ensure directory exists
-        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Check if file exists to determine if we need header
-        file_exists = self.csv_path.exists()
+        if not filepath.exists():
+            return numbers
 
         try:
-            with open(self.csv_path, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-
-                # Write header if new file
-                if not file_exists:
-                    writer.writerow(["phone_number", "used_at", "platform", "success"])
-
-                # Write the phone number
-                writer.writerow([
-                    phone,
-                    datetime.now().isoformat(),
-                    str(self.platform),
-                    str(success)
-                ])
-
-            self.log.info(f"Added {phone} to CSV: {self.csv_path}")
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    number = line.strip()
+                    if number:
+                        numbers.add(number)
+            self.log.debug(f"Loaded {len(numbers)} numbers from {filepath.name}")
         except Exception as e:
-            self.log.error(f"Error writing to CSV: {e}")
+            self.log.error(f"Error reading {filepath}: {e}")
 
-    def _is_used(self, phone_number: str) -> bool:
-        """Check if a phone number is already used (in CSV)."""
-        return phone_number in self._used_numbers
+        return numbers
+
+    def _append_to_file(self, filepath: Path, phone: str) -> None:
+        """Append a phone number to a file."""
+        try:
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(f"{phone}\n")
+            self.log.debug(f"Added {phone} to {filepath.name}")
+        except Exception as e:
+            self.log.error(f"Error writing to {filepath}: {e}")
+
+    def _is_processed(self, phone_number: str) -> bool:
+        """Check if a phone number is already processed (success or failed)."""
+        return phone_number in self._success_numbers or phone_number in self._failed_numbers
 
     def get_next(self) -> PhoneNumber | None:
         """
@@ -153,74 +142,103 @@ class PhoneManager(LoggerMixin):
         if not self._loaded:
             raise RuntimeError("PhoneManager not loaded. Call load() first.")
 
-        # Re-read CSV to get latest used numbers (in case of concurrent runs)
-        self._load_used_from_csv()
+        # Re-read files to get latest processed numbers (in case of concurrent runs)
+        self._success_numbers = self._load_numbers_from_file(SUCCESS_FILE)
+        self._failed_numbers = self._load_numbers_from_file(FAILED_FILE)
 
         for phone in self._all_phones:
-            if not self._is_used(phone.number):
+            if not self._is_processed(phone.number):
                 self.log.info(f"Next available phone: {phone.formatted}")
                 return phone
 
         self.log.warning("No available phone numbers remaining")
         return None
 
-    async def mark_used(self, phone: PhoneNumber, success: bool = True) -> None:
+    async def mark_success(self, phone: PhoneNumber) -> None:
         """
-        Mark a phone number as used by adding to CSV.
+        Mark a phone number as successful.
 
         Args:
-            phone: The phone number to mark as used.
-            success: Whether the signup was successful.
+            phone: The phone number that succeeded.
         """
         if not self._loaded:
             raise RuntimeError("PhoneManager not loaded. Call load() first.")
 
-        # Add to in-memory set
-        self._used_numbers.add(phone.number)
+        # Add to success file
+        self._success_numbers.add(phone.number)
+        self._append_to_file(SUCCESS_FILE, phone.number)
 
-        # Append to CSV file
-        self._append_to_csv(phone.number, success)
-
-        available = len(self._all_phones) - len(self._used_numbers)
-        self.log.info(
-            f"Marked phone {phone.formatted} as used "
-            f"(success={success}, {available} remaining)"
-        )
+        available = self.available_count
+        self.log.info(f"SUCCESS: {phone.formatted} ({available} remaining)")
 
     async def mark_failed(self, phone: PhoneNumber) -> None:
         """
-        Mark a phone number as failed (but used).
+        Mark a phone number as failed.
 
         Args:
             phone: The phone number that failed.
         """
-        await self.mark_used(phone, success=False)
+        if not self._loaded:
+            raise RuntimeError("PhoneManager not loaded. Call load() first.")
+
+        # Add to failed file
+        self._failed_numbers.add(phone.number)
+        self._append_to_file(FAILED_FILE, phone.number)
+
+        available = self.available_count
+        self.log.info(f"FAILED: {phone.formatted} ({available} remaining)")
+
+    async def mark_used(self, phone: PhoneNumber, success: bool = True) -> None:
+        """
+        Mark a phone number as used.
+
+        Args:
+            phone: The phone number to mark.
+            success: Whether the signup was successful.
+        """
+        if success:
+            await self.mark_success(phone)
+        else:
+            await self.mark_failed(phone)
 
     @property
     def available_count(self) -> int:
         """Get the count of available phone numbers."""
-        # Re-read CSV to get latest used numbers
-        self._load_used_from_csv()
-        return len(self._all_phones) - len(self._used_numbers)
+        # Re-read files to get latest
+        self._success_numbers = self._load_numbers_from_file(SUCCESS_FILE)
+        self._failed_numbers = self._load_numbers_from_file(FAILED_FILE)
+        processed = len(self._success_numbers) + len(self._failed_numbers)
+        return len(self._all_phones) - processed
 
     @property
-    def used_count(self) -> int:
-        """Get the count of used phone numbers."""
-        # Re-read CSV to get latest used numbers
-        self._load_used_from_csv()
-        return len(self._used_numbers)
+    def success_count(self) -> int:
+        """Get the count of successful phone numbers."""
+        return len(self._success_numbers)
+
+    @property
+    def failed_count(self) -> int:
+        """Get the count of failed phone numbers."""
+        return len(self._failed_numbers)
 
     @property
     def total_count(self) -> int:
         """Get the total count of phone numbers."""
         return len(self._all_phones)
 
+    # Kept for compatibility
+    @property
+    def used_count(self) -> int:
+        """Get the count of processed phone numbers."""
+        return self.success_count + self.failed_count
+
     def get_stats(self) -> dict:
         """Get usage statistics."""
         return {
             "platform": str(self.platform),
-            "available": self.available_count,
-            "used": self.used_count,
             "total": self.total_count,
-            "csv_path": str(self.csv_path),
+            "success": self.success_count,
+            "failed": self.failed_count,
+            "available": self.available_count,
+            "success_file": str(SUCCESS_FILE),
+            "failed_file": str(FAILED_FILE),
         }

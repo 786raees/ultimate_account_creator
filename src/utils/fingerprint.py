@@ -99,18 +99,10 @@ class FingerprintGenerator:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     ]
 
-    # Common desktop viewport sizes (width, height)
+    # Fixed Full HD viewport for consistent experience
+    # Using only 1920x1080 to ensure full screen display
     DESKTOP_VIEWPORTS = [
-        (1920, 1080),  # Full HD - most common
-        (1366, 768),   # HD - very common laptop
-        (1536, 864),   # Common laptop
-        (1440, 900),   # MacBook
-        (1680, 1050),  # Larger laptop
-        (2560, 1440),  # QHD
-        (1280, 720),   # HD
-        (1600, 900),   # Common
-        (1280, 800),   # MacBook Air
-        (1920, 1200),  # WUXGA
+        (1920, 1080),  # Full HD - standard full screen
     ]
 
     # Common timezones (weighted towards US/EU for Airbnb)
@@ -189,12 +181,10 @@ class FingerprintGenerator:
         else:
             user_agent = random.choice(self.CHROME_USER_AGENTS)
 
-        # Select viewport with weighted distribution (favor common sizes)
-        viewport = random.choice(self.DESKTOP_VIEWPORTS)
-
-        # Add slight randomization to viewport
-        width = viewport[0] + random.randint(-10, 10)
-        height = viewport[1] + random.randint(-10, 10)
+        # Use fixed Full HD viewport (1920x1080)
+        viewport = self.DESKTOP_VIEWPORTS[0]
+        width = viewport[0]
+        height = viewport[1]
 
         # Select timezone and matching locale
         timezone = random.choice(self.TIMEZONES)
@@ -301,10 +291,10 @@ class FingerprintGenerator:
         else:
             user_agent = random.choice(self.CHROME_USER_AGENTS)
 
-        # Select viewport with slight randomization
-        viewport = random.choice(self.DESKTOP_VIEWPORTS)
-        width = viewport[0] + random.randint(-10, 10)
-        height = viewport[1] + random.randint(-10, 10)
+        # Use fixed Full HD viewport (1920x1080)
+        viewport = self.DESKTOP_VIEWPORTS[0]
+        width = viewport[0]
+        height = viewport[1]
 
         # Get country-specific values from profile
         timezone = profile.get_random_timezone()

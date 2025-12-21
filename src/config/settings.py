@@ -249,6 +249,33 @@ class RetrySettings(BaseSettings):
     retry_delay_seconds: int = Field(default=5, description="Delay between retries in seconds")
 
 
+class MultiLoginXSettings(BaseSettings):
+    """MultiLoginX integration configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="MLX_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    enabled: bool = Field(default=True, description="Enable MultiLoginX for browser profiles")
+    base_url: str = Field(
+        default="https://launcher.mlx.yt:45001",
+        description="MultiLoginX launcher API URL"
+    )
+    api_url: str = Field(
+        default="https://api.multilogin.com",
+        description="MultiLoginX main API URL for authentication"
+    )
+    email: str = Field(default="", description="MultiLoginX account email")
+    password: str = Field(default="", description="MultiLoginX account password (MD5 hashed)")
+    timeout: int = Field(default=60, description="API request timeout in seconds")
+    browser_type: str = Field(default="mimic", description="Browser type (mimic, stealthfox)")
+    core_version: int = Field(default=132, description="Browser core version")
+    os_type: str = Field(default="windows", description="OS type (windows, linux, macos)")
+
+
 class Settings(BaseSettings):
     """
     Main application settings.
@@ -273,6 +300,7 @@ class Settings(BaseSettings):
     captcha: CaptchaSettings = Field(default_factory=CaptchaSettings)
     fingerprint: FingerprintSettings = Field(default_factory=FingerprintSettings)
     human_behavior: HumanBehaviorSettings = Field(default_factory=HumanBehaviorSettings)
+    multiloginx: MultiLoginXSettings = Field(default_factory=MultiLoginXSettings)
 
     def __init__(self, **kwargs):
         """Initialize settings with nested configurations."""
@@ -286,6 +314,7 @@ class Settings(BaseSettings):
         object.__setattr__(self, "captcha", CaptchaSettings())
         object.__setattr__(self, "fingerprint", FingerprintSettings())
         object.__setattr__(self, "human_behavior", HumanBehaviorSettings())
+        object.__setattr__(self, "multiloginx", MultiLoginXSettings())
 
 
 @lru_cache

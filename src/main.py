@@ -64,6 +64,12 @@ Supported Platforms:
     )
 
     parser.add_argument(
+        "--no-multiloginx",
+        action="store_true",
+        help="Disable MultiLoginX, use direct Playwright instead",
+    )
+
+    parser.add_argument(
         "--delay",
         "-d",
         type=int,
@@ -129,9 +135,13 @@ def main() -> int:
     setup_logger()
 
     # Update settings based on args
+    import os
+
     if args.verbose:
-        import os
         os.environ["LOG_LEVEL"] = "DEBUG"
+
+    if args.no_multiloginx:
+        os.environ["MLX_ENABLED"] = "false"
 
     # Run async main
     return asyncio.run(main_async(args))
