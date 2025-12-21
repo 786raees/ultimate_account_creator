@@ -99,10 +99,9 @@ class FingerprintGenerator:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     ]
 
-    # Fixed Full HD viewport for consistent experience
-    # Using only 1920x1080 to ensure full screen display
+    # Fixed 5K viewport for maximum resolution
     DESKTOP_VIEWPORTS = [
-        (1920, 1080),  # Full HD - standard full screen
+        (5120, 2880),  # 5K resolution - maximized display
     ]
 
     # Common timezones (weighted towards US/EU for Airbnb)

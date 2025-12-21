@@ -266,9 +266,9 @@ class BrowserManager(LoggerMixin):
                 "ignore_https_errors": True,
             }
         else:
-            # Default options - Full HD viewport
+            # Default options - 5K viewport
             options = {
-                "viewport": {"width": 1920, "height": 1080},  # Full HD
+                "viewport": {"width": 5120, "height": 2880},  # 5K
                 "user_agent": self._get_user_agent(),
                 "locale": "en-US",
                 "timezone_id": "America/New_York",
@@ -571,7 +571,7 @@ class BrowserManager(LoggerMixin):
                 self.log.info(f"Proxy: {self.settings.proxy.host}:{proxy_port}")
                 self.log.info(f"Proxy User: {self.settings.proxy.username}")
 
-            # Create quick profile
+            # Create quick profile with 5K resolution
             profile_result = await self._mlx_client.create_quick_profile(
                 browser_type=mlx_settings.browser_type,
                 os_type=mlx_settings.os_type,
@@ -579,6 +579,8 @@ class BrowserManager(LoggerMixin):
                 is_headless=self.settings.browser.headless,
                 proxy=proxy_config,
                 automation="playwright",
+                screen_width=5120,
+                screen_height=2880,
             )
 
             if not profile_result.success:
@@ -623,6 +625,27 @@ class BrowserManager(LoggerMixin):
 
             # Set up page logging
             self._setup_page_logging(page)
+
+            # Set viewport to 5K resolution
+            await page.set_viewport_size({"width": 5120, "height": 2880})
+            self.log.info("Viewport set to 5120x2880 (5K)")
+
+            # Maximize the browser window
+            try:
+                cdp = await context.new_cdp_session(page)
+                await cdp.send("Browser.setWindowBounds", {
+                    "windowId": 1,
+                    "bounds": {"windowState": "maximized"}
+                })
+                self.log.info("Browser window maximized")
+            except Exception as e:
+                self.log.debug(f"Could not maximize via CDP: {e}")
+                # Fallback: try to maximize via page evaluate
+                try:
+                    await page.evaluate("window.moveTo(0, 0); window.resizeTo(screen.width, screen.height);")
+                    self.log.info("Browser window maximized via JS")
+                except:
+                    pass
 
             # Warm up the proxy connection before real navigation
             # This gives MLX time to complete proxy authentication
@@ -669,7 +692,35 @@ class BrowserManager(LoggerMixin):
                 await self._mlx_client.close()
                 self._mlx_client = None
 
+            # Kill any remaining Chrome processes from MLX
+            await self._kill_chrome_processes()
+
             self.log.info("MLX session cleanup complete")
+
+    async def _kill_chrome_processes(self) -> None:
+        """Kill Chrome processes to ensure MLX profiles are fully stopped."""
+        import subprocess
+        import platform
+
+        try:
+            if platform.system() == "Windows":
+                # Kill Chrome processes on Windows
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", "chrome.exe"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.log.debug("Killed Chrome processes")
+            else:
+                # Kill Chrome processes on Linux/Mac
+                subprocess.run(
+                    ["pkill", "-f", "chrome"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.log.debug("Killed Chrome processes")
+        except Exception as e:
+            self.log.debug(f"Could not kill Chrome processes: {e}")
 
     @asynccontextmanager
     async def page_context(self) -> AsyncGenerator[Page, None]:

@@ -316,8 +316,10 @@ class AirbnbSignupPage(BasePage):
             'div:has-text("security check")',
         ]
 
-        # OTP success indicators - ONLY checked if no errors found
-        # Note: "Confirm your number" can appear WITH error messages, so we must check errors first
+        # OTP success text - this ONLY appears when SMS was actually sent
+        otp_success_text = "enter the code we sent over sms to"
+
+        # OTP input indicators (backup check)
         otp_indicators = [
             'input[inputmode="numeric"]',
             'input[autocomplete="one-time-code"]',
@@ -357,17 +359,31 @@ class AirbnbSignupPage(BasePage):
                     continue
 
             # ============================================================
-            # STEP 3: Check for OTP INPUT field (success indicator)
-            # Only if no errors were found above
+            # STEP 3: Check for OTP SUCCESS text
+            # "Enter the code we sent over SMS to" - confirms SMS was sent
             # ============================================================
+            if otp_success_text in page_text_lower:
+                self.log.info("=" * 50)
+                self.log.info("SUCCESS: Found 'Enter the code we sent over SMS to'")
+                self.log.info("SMS was sent successfully!")
+                self.log.info("=" * 50)
+                return True
+
+            # Backup: check for OTP input field
             for otp_sel in otp_indicators:
                 try:
                     otp_element = self.page.locator(otp_sel).first
                     if await otp_element.is_visible(timeout=300):
-                        # Double-check: make sure no error text appeared
+                        # Double-check page text for the success message
                         page_text_recheck = await self.page.inner_text('body')
                         page_text_lower_recheck = page_text_recheck.lower()
 
+                        # Check for success text
+                        if otp_success_text in page_text_lower_recheck:
+                            self.log.info("SUCCESS: OTP input + success text found")
+                            return True
+
+                        # Check for errors
                         has_error = False
                         for failure_text in failure_texts:
                             if failure_text.lower() in page_text_lower_recheck:
@@ -378,9 +394,8 @@ class AirbnbSignupPage(BasePage):
                         if has_error:
                             return False
 
-                        self.log.info(f"OTP input field detected: {otp_sel}")
-                        self.log.info("No error messages found - SMS was sent successfully!")
-                        return True
+                        # Input found but no success text - might be loading, continue waiting
+                        self.log.debug(f"OTP input found but no success text yet, waiting...")
                 except:
                     continue
 

@@ -157,6 +157,8 @@ class MultiLoginXClient(LoggerMixin):
         is_headless: bool = False,
         proxy: Optional[dict] = None,
         automation: str = "playwright",
+        screen_width: int = 1920,
+        screen_height: int = 1080,
     ) -> QuickProfileResult:
         """
         Create and start a quick browser profile.
@@ -169,6 +171,8 @@ class MultiLoginXClient(LoggerMixin):
             proxy: Optional proxy configuration dict with keys:
                    host, type, port, username, password.
             automation: Automation type ("playwright" or "selenium").
+            screen_width: Screen width in pixels (default 1920).
+            screen_height: Screen height in pixels (default 1080).
 
         Returns:
             QuickProfileResult with profile_id and CDP port on success.
@@ -182,8 +186,8 @@ class MultiLoginXClient(LoggerMixin):
 
         url = f"{self.base_url}/api/v3/profile/quick"
 
-        # Build the request body with mask flags (not custom)
-        # Using mask avoids having to specify all fingerprint params
+        # Build the request body
+        # Use "custom" for screen_masking to set fixed resolution
         body = {
             "browser_type": browser_type,
             "os_type": os_type,
@@ -203,13 +207,20 @@ class MultiLoginXClient(LoggerMixin):
                     "navigator_masking": "mask",
                     "ports_masking": "mask",
                     "proxy_masking": "custom" if proxy else "disabled",
-                    "screen_masking": "mask",
+                    "screen_masking": "custom",  # Use custom to set fixed resolution
                     "timezone_masking": "mask",
                     "webrtc_masking": "mask",
                     "canvas_noise": "mask",
                 },
-                "fingerprint": {},
+                "fingerprint": {
+                    "screen": {
+                        "width": screen_width,
+                        "height": screen_height,
+                        "pixel_ratio": 1.0,
+                    }
+                },
                 "storage": {},
+                "args": ["--start-maximized"],  # Start browser maximized
             }
         }
 
