@@ -812,6 +812,50 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
         timezones=["Asia/Kathmandu"],
         currency="NPR",
     ),
+
+    # Lebanon (+961)
+    "961": CountryProfile(
+        country_code="961",
+        country_name="Lebanon",
+        iso_code="LB",
+        locales=["ar-LB", "fr-LB", "en-LB"],
+        accept_languages=[
+            "ar-LB,ar;q=0.9,fr;q=0.8,en-US;q=0.7,en;q=0.6",
+            "fr-LB,fr;q=0.9,ar;q=0.8,en-US;q=0.7,en;q=0.6",
+            "en-LB,en;q=0.9,ar;q=0.8,fr;q=0.7",
+        ],
+        timezones=["Asia/Beirut"],
+        currency="LBP",
+    ),
+
+    # Uzbekistan (+998)
+    "998": CountryProfile(
+        country_code="998",
+        country_name="Uzbekistan",
+        iso_code="UZ",
+        locales=["uz-UZ", "ru-UZ", "en-UZ"],
+        accept_languages=[
+            "uz-UZ,uz;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+            "ru-UZ,ru;q=0.9,uz;q=0.8,en-US;q=0.7,en;q=0.6",
+            "ru,en-US;q=0.9,en;q=0.8",
+        ],
+        timezones=["Asia/Tashkent", "Asia/Samarkand"],
+        currency="UZS",
+    ),
+
+    # Burkina Faso (+226)
+    "226": CountryProfile(
+        country_code="226",
+        country_name="Burkina Faso",
+        iso_code="BF",
+        locales=["fr-BF", "en-BF"],
+        accept_languages=[
+            "fr-BF,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "fr,en-US;q=0.9,en;q=0.8",
+        ],
+        timezones=["Africa/Ouagadougou"],
+        currency="XOF",
+    ),
 }
 
 # Default profile for unknown country codes (fallback to US)
