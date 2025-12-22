@@ -25,8 +25,6 @@ from playwright.async_api import (
     Playwright,
     async_playwright,
     ConsoleMessage,
-    Request,
-    Response,
 )
 
 from src.config import get_settings
@@ -266,9 +264,9 @@ class BrowserManager(LoggerMixin):
                 "ignore_https_errors": True,
             }
         else:
-            # Default options - 5K viewport
+            # Default options - standard 1080p viewport
             options = {
-                "viewport": {"width": 5120, "height": 2880},  # 5K
+                "viewport": {"width": 1920, "height": 1080},
                 "user_agent": self._get_user_agent(),
                 "locale": "en-US",
                 "timezone_id": "America/New_York",
@@ -306,111 +304,20 @@ class BrowserManager(LoggerMixin):
         return self._current_proxy_port
 
     def _setup_page_logging(self, page: Page) -> None:
-        """Set up comprehensive page event logging."""
+        """Set up minimal page event logging - only errors."""
 
-        # API endpoints to log in detail
-        api_keywords = [
-            "phone_one_time_passwords",
-            "api/v2",
-            "api/v3",
-            "authentications",
-            "signup",
-            "login",
-            "register",
-        ]
-
-        # Console message logging
-        def on_console(msg: ConsoleMessage) -> None:
-            if msg.type == "error":
-                self.log.error(f"[CONSOLE ERROR] {msg.text}")
-            elif msg.type == "warning":
-                self.log.warning(f"[CONSOLE WARN] {msg.text}")
-            elif self.debug_mode:
-                self.log.debug(f"[CONSOLE {msg.type.upper()}] {msg.text}")
-
-        page.on("console", on_console)
-
-        # Page error logging
+        # Only log page errors
         def on_page_error(error: Exception) -> None:
             self.log.error(f"[PAGE ERROR] {error}")
 
         page.on("pageerror", on_page_error)
 
-        # Request logging with POST data for API calls
-        def on_request(request: Request) -> None:
-            url = request.url
-            is_api_call = any(kw in url for kw in api_keywords)
+        # Only log console errors
+        def on_console(msg: ConsoleMessage) -> None:
+            if msg.type == "error":
+                self.log.error(f"[CONSOLE] {msg.text[:200]}")
 
-            if is_api_call:
-                self.log.info(f"[API REQUEST] {request.method} {url}")
-
-                # Log POST data if available
-                if request.method == "POST":
-                    try:
-                        post_data = request.post_data
-                        if post_data:
-                            self.log.info(f"[API REQUEST BODY] {post_data[:2000]}")
-                    except Exception as e:
-                        self.log.debug(f"Could not get POST data: {e}")
-
-                # Log headers for API calls
-                try:
-                    headers = request.headers
-                    important_headers = {k: v for k, v in headers.items()
-                                        if k.lower() in ['content-type', 'x-airbnb-api-key', 'authorization', 'x-csrf-token']}
-                    if important_headers:
-                        self.log.info(f"[API REQUEST HEADERS] {important_headers}")
-                except Exception:
-                    pass
-
-            elif self.debug_mode and request.resource_type in ["document", "xhr", "fetch"]:
-                self.log.debug(f"[REQUEST] {request.method} {url[:100]}")
-
-        page.on("request", on_request)
-
-        # Response logging with body for API calls
-        async def on_response_async(response: Response) -> None:
-            url = response.url
-            status = response.status
-            is_api_call = any(kw in url for kw in api_keywords)
-
-            if is_api_call:
-                self.log.info(f"[API RESPONSE] {status} {url}")
-
-                # Log response body for API calls
-                try:
-                    body = await response.text()
-                    if body:
-                        # Truncate long responses
-                        body_preview = body[:3000] + "..." if len(body) > 3000 else body
-                        self.log.info(f"[API RESPONSE BODY] {body_preview}")
-                except Exception as e:
-                    self.log.debug(f"Could not get response body: {e}")
-
-            elif status >= 400:
-                self.log.warning(f"[RESPONSE {status}] {url[:100]}")
-            elif self.debug_mode and response.request.resource_type in ["document", "xhr", "fetch"]:
-                self.log.debug(f"[RESPONSE {status}] {url[:100]}")
-
-        def on_response(response: Response) -> None:
-            # Schedule async response handling
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                loop.create_task(on_response_async(response))
-            except RuntimeError:
-                pass  # No event loop running
-
-        page.on("response", on_response)
-
-        # Dialog handling (alerts, confirms, prompts)
-        async def on_dialog(dialog) -> None:
-            self.log.warning(f"[DIALOG {dialog.type}] {dialog.message}")
-            await dialog.dismiss()
-
-        page.on("dialog", lambda d: page._loop.create_task(on_dialog(d)))
-
-        self.log.debug("Page event logging configured (API logging enabled)")
+        page.on("console", on_console)
 
     async def create_context(self) -> BrowserContext:
         """
@@ -532,10 +439,6 @@ class BrowserManager(LoggerMixin):
         Creates a quick profile, connects via CDP, runs automation,
         then stops the profile.
         """
-        self.log.info("=" * 60)
-        self.log.info("STARTING MLX BROWSER SESSION")
-        self.log.info("=" * 60)
-
         mlx_settings = self.settings.multiloginx
         self._mlx_client = MultiLoginXClient(
             base_url=mlx_settings.base_url,
@@ -565,13 +468,11 @@ class BrowserManager(LoggerMixin):
                     "host": self.settings.proxy.host,
                     "type": "http",
                     "port": proxy_port,
-                    "username": self.settings.proxy.username,  # Base username, not country-targeted
+                    "username": self.settings.proxy.username,
                     "password": self.settings.proxy.password,
                 }
-                self.log.info(f"Proxy: {self.settings.proxy.host}:{proxy_port}")
-                self.log.info(f"Proxy User: {self.settings.proxy.username}")
 
-            # Create quick profile with 5K resolution
+            # Create quick profile - let MLX auto-handle screen resolution
             profile_result = await self._mlx_client.create_quick_profile(
                 browser_type=mlx_settings.browser_type,
                 os_type=mlx_settings.os_type,
@@ -579,16 +480,13 @@ class BrowserManager(LoggerMixin):
                 is_headless=self.settings.browser.headless,
                 proxy=proxy_config,
                 automation="playwright",
-                screen_width=5120,
-                screen_height=2880,
+                # screen_width/height not set - MLX auto-handles
             )
 
             if not profile_result.success:
                 raise RuntimeError(f"Failed to create MLX profile: {profile_result.error}")
 
             self._mlx_profile_id = profile_result.profile_id
-            self.log.info(f"MLX Profile created: {profile_result.profile_id}")
-            self.log.info(f"Connecting via CDP: {profile_result.cdp_url}")
 
             # Small delay to let browser fully initialize
             await asyncio.sleep(2)
@@ -604,11 +502,8 @@ class BrowserManager(LoggerMixin):
             contexts = self._browser.contexts
             if contexts:
                 context = contexts[0]
-                self.log.info("Using existing MLX browser context")
             else:
-                # Fallback: create new context (shouldn't happen with quick profiles)
                 context = await self._browser.new_context()
-                self.log.info("Created new browser context")
 
             # Set timeouts
             context.set_default_timeout(self.settings.browser.default_timeout)
@@ -618,42 +513,16 @@ class BrowserManager(LoggerMixin):
             pages = context.pages
             if pages:
                 page = pages[0]
-                self.log.info("Using existing page")
             else:
                 page = await context.new_page()
-                self.log.info("Created new page")
 
             # Set up page logging
             self._setup_page_logging(page)
 
-            # Set viewport to 5K resolution
-            await page.set_viewport_size({"width": 5120, "height": 2880})
-            self.log.info("Viewport set to 5120x2880 (5K)")
-
-            # Maximize the browser window
-            try:
-                cdp = await context.new_cdp_session(page)
-                await cdp.send("Browser.setWindowBounds", {
-                    "windowId": 1,
-                    "bounds": {"windowState": "maximized"}
-                })
-                self.log.info("Browser window maximized")
-            except Exception as e:
-                self.log.debug(f"Could not maximize via CDP: {e}")
-                # Fallback: try to maximize via page evaluate
-                try:
-                    await page.evaluate("window.moveTo(0, 0); window.resizeTo(screen.width, screen.height);")
-                    self.log.info("Browser window maximized via JS")
-                except:
-                    pass
-
-            # Warm up the proxy connection before real navigation
-            # This gives MLX time to complete proxy authentication
-            self.log.info("Warming up proxy connection...")
+            # Warm up proxy connection
             await page.goto("about:blank")
             await asyncio.sleep(1)
 
-            self.log.info("MLX session ready!")
             yield page
 
         except Exception as e:
@@ -667,7 +536,6 @@ class BrowserManager(LoggerMixin):
 
         finally:
             # Clean up
-            self.log.info("Cleaning up MLX session...")
 
             if self._browser:
                 try:
@@ -694,8 +562,6 @@ class BrowserManager(LoggerMixin):
 
             # Kill any remaining Chrome processes from MLX
             await self._kill_chrome_processes()
-
-            self.log.info("MLX session cleanup complete")
 
     async def _kill_chrome_processes(self) -> None:
         """Kill Chrome processes to ensure MLX profiles are fully stopped."""

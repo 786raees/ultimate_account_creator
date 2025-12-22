@@ -131,7 +131,7 @@ async def run_single_signup(use_manual_otp: bool = False) -> None:
     print(f"{'='*50}\n")
 
 
-async def run_continuous_loop(delay_between: int = 10) -> None:
+async def run_continuous_loop(delay_between: int = 0) -> None:
     """
     Run Airbnb signup in a continuous loop.
 
@@ -144,7 +144,7 @@ async def run_continuous_loop(delay_between: int = 10) -> None:
     6. Moves to next phone
 
     Args:
-        delay_between: Delay between each signup attempt in seconds.
+        delay_between: Delay between each signup attempt in seconds (default 0).
     """
     logger = get_logger("AirbnbRunner")
     settings = get_settings()
@@ -153,7 +153,6 @@ async def run_continuous_loop(delay_between: int = 10) -> None:
     print("AIRBNB CONTINUOUS SIGNUP LOOP")
     print(f"{'='*60}")
     print("Each signup creates a fresh MLX profile")
-    print(f"Delay between attempts: {delay_between}s")
     print(f"Success file: data/success.txt")
     print(f"Failed file: data/failed.txt")
     print(f"{'='*60}\n")
@@ -255,11 +254,7 @@ async def run_continuous_loop(delay_between: int = 10) -> None:
             # Don't break - continue to next phone
             print("  Continuing to next phone...")
 
-        # Wait before next attempt
-        remaining = phone_manager.available_count
-        if remaining > 0:
-            print(f"\nWaiting {delay_between}s before next attempt...")
-            await asyncio.sleep(delay_between)
+        # Continue immediately to next phone (no delay)
 
     # Final summary
     total_processed = success_count + fail_count
@@ -278,13 +273,13 @@ async def run_continuous_loop(delay_between: int = 10) -> None:
     print(f"{'='*60}\n")
 
 
-async def run_all_phones(delay_between: int = 10) -> None:
+async def run_all_phones(delay_between: int = 0) -> None:
     """
     Run Airbnb signup for ALL available phone numbers.
     Alias for run_continuous_loop for compatibility.
 
     Args:
-        delay_between: Delay between each signup attempt in seconds.
+        delay_between: Delay between each signup attempt in seconds (default 0).
     """
     await run_continuous_loop(delay_between=delay_between)
 
@@ -338,9 +333,7 @@ async def run_batch_signup(count: int = 5) -> None:
         )
         results.append(result)
 
-        if i < count - 1:
-            print(f"\nWaiting 10s before next attempt...")
-            await asyncio.sleep(10)
+        # Continue immediately to next attempt (no delay)
 
     # Summary
     successes = sum(1 for r in results if r.success)

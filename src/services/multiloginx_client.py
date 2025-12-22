@@ -6,12 +6,17 @@ Simple client for MultiLoginX quick profile management.
 Creates one-time quick browser profiles and connects via CDP.
 """
 
+import asyncio
 import hashlib
 import httpx
 from dataclasses import dataclass
 from typing import Optional
 
 from src.utils.logger import LoggerMixin
+
+# Rate limiting constants
+MAX_AUTH_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 30  # Start with 30s for rate limit
 
 
 @dataclass
@@ -94,9 +99,14 @@ class MultiLoginXClient(LoggerMixin):
         # Hash it
         return hashlib.md5(password.encode()).hexdigest()
 
-    async def authenticate(self) -> bool:
+    async def authenticate(self, retry_count: int = 0) -> bool:
         """
         Authenticate with MultiLoginX to get a bearer token.
+
+        Handles rate limiting with exponential backoff retry.
+
+        Args:
+            retry_count: Current retry attempt (used internally).
 
         Returns:
             True if authentication was successful.
@@ -115,7 +125,7 @@ class MultiLoginXClient(LoggerMixin):
             "password": hashed_password,
         }
 
-        self.log.info(f"Authenticating with MLX as: {self.email}")
+        self.log.debug(f"MLX auth: {self.email}")
 
         try:
             client = await self._get_client()
@@ -130,9 +140,20 @@ class MultiLoginXClient(LoggerMixin):
 
             data = response.json()
 
+            # Handle rate limiting (429 TOO_MANY_REQUESTS)
+            if response.status_code == 429 or data.get("status", {}).get("error_code") == "TOO_MANY_REQUESTS":
+                if retry_count < MAX_AUTH_RETRIES:
+                    backoff = INITIAL_BACKOFF_SECONDS * (2 ** retry_count)
+                    self.log.warning(f"MLX rate limited - waiting {backoff}s before retry ({retry_count + 1}/{MAX_AUTH_RETRIES})")
+                    await asyncio.sleep(backoff)
+                    return await self.authenticate(retry_count + 1)
+                else:
+                    self.log.error("MLX rate limit - max retries exceeded. Please wait a few minutes.")
+                    return False
+
             if response.status_code == 200 and data.get("data", {}).get("token"):
                 self._token = data["data"]["token"]
-                self.log.info("MLX authentication successful!")
+                self.log.debug("MLX authenticated")
                 return True
             else:
                 error_msg = data.get("message", str(data))
@@ -157,8 +178,8 @@ class MultiLoginXClient(LoggerMixin):
         is_headless: bool = False,
         proxy: Optional[dict] = None,
         automation: str = "playwright",
-        screen_width: int = 1920,
-        screen_height: int = 1080,
+        screen_width: int = 0,  # 0 = let MLX auto-handle
+        screen_height: int = 0,  # 0 = let MLX auto-handle
     ) -> QuickProfileResult:
         """
         Create and start a quick browser profile.
@@ -171,8 +192,8 @@ class MultiLoginXClient(LoggerMixin):
             proxy: Optional proxy configuration dict with keys:
                    host, type, port, username, password.
             automation: Automation type ("playwright" or "selenium").
-            screen_width: Screen width in pixels (default 1920).
-            screen_height: Screen height in pixels (default 1080).
+            screen_width: Screen width (0 = auto).
+            screen_height: Screen height (0 = auto).
 
         Returns:
             QuickProfileResult with profile_id and CDP port on success.
@@ -186,8 +207,8 @@ class MultiLoginXClient(LoggerMixin):
 
         url = f"{self.base_url}/api/v3/profile/quick"
 
-        # Build the request body
-        # Use "custom" for screen_masking to set fixed resolution
+        # Build minimal request body - let MLX auto-handle most settings
+        # Only specify what we need: browser, OS, automation, and proxy
         body = {
             "browser_type": browser_type,
             "os_type": os_type,
@@ -196,31 +217,9 @@ class MultiLoginXClient(LoggerMixin):
             "core_version": core_version,
             "parameters": {
                 "flags": {
-                    "audio_masking": "natural",
-                    "fonts_masking": "mask",
-                    "geolocation_masking": "mask",
-                    "geolocation_popup": "allow",
-                    "graphics_masking": "mask",
-                    "graphics_noise": "mask",
-                    "localization_masking": "mask",
-                    "media_devices_masking": "natural",
-                    "navigator_masking": "mask",
-                    "ports_masking": "mask",
+                    # Let MLX auto-handle all fingerprinting
                     "proxy_masking": "custom" if proxy else "disabled",
-                    "screen_masking": "custom",  # Use custom to set fixed resolution
-                    "timezone_masking": "mask",
-                    "webrtc_masking": "mask",
-                    "canvas_noise": "mask",
                 },
-                "fingerprint": {
-                    "screen": {
-                        "width": screen_width,
-                        "height": screen_height,
-                        "pixel_ratio": 1.0,
-                    }
-                },
-                "storage": {},
-                "args": ["--start-maximized"],  # Start browser maximized
             }
         }
 
@@ -234,9 +233,7 @@ class MultiLoginXClient(LoggerMixin):
                 "password": proxy.get("password", ""),
             }
 
-        self.log.info(f"Creating quick profile: {browser_type}/{os_type}")
-        if proxy:
-            self.log.info(f"  Proxy: {proxy.get('host')}:{proxy.get('port')}")
+        self.log.info(f"Creating MLX profile ({browser_type}/{os_type})...")
 
         try:
             client = await self._get_client()
@@ -251,8 +248,6 @@ class MultiLoginXClient(LoggerMixin):
             )
 
             data = response.json()
-            self.log.info(f"MLX response status: {response.status_code}")
-            self.log.info(f"MLX response data: {data}")
 
             # Handle different response formats from MLX API
             # The API can return data in various structures
@@ -288,21 +283,15 @@ class MultiLoginXClient(LoggerMixin):
             )
 
             if is_success and port:
-                self.log.info(f"Quick profile created successfully!")
-                self.log.info(f"  Profile ID: {profile_id}")
-                self.log.info(f"  CDP Port: {port}")
-
+                self.log.info(f"MLX profile ready (port {port})")
                 return QuickProfileResult(
                     success=True,
                     profile_id=profile_id,
                     port=port,
                 )
             elif is_success and not port:
-                # Success message but no port - need to extract from response
-                self.log.warning(f"Profile started but port not found in response")
-                self.log.warning(f"Full response: {data}")
-                error_msg = f"Port not found in response. Full data: {data}"
-                return QuickProfileResult(success=False, error=error_msg)
+                self.log.error("MLX profile started but port not found")
+                return QuickProfileResult(success=False, error="Port not found in response")
             else:
                 error_msg = status_message or str(data)
                 self.log.error(f"Failed to create profile: {error_msg}")
@@ -327,7 +316,7 @@ class MultiLoginXClient(LoggerMixin):
         """
         url = f"{self.base_url}/api/v1/profile/stop"
 
-        self.log.info(f"Stopping profile: {profile_id}")
+        self.log.debug(f"Stopping MLX profile...")
 
         try:
             client = await self._get_client()
@@ -342,24 +331,14 @@ class MultiLoginXClient(LoggerMixin):
                 headers=headers,
             )
 
-            # Try to parse JSON, but handle non-JSON responses gracefully
             try:
                 data = response.json()
             except Exception:
-                # Some stop responses may not be JSON
-                if response.status_code == 200:
-                    self.log.info(f"Profile stopped successfully")
-                    return True
-                self.log.warning(f"Non-JSON response: {response.text[:200]}")
-                return False
+                return response.status_code == 200
 
             if response.status_code == 200 and data.get("status", {}).get("ok"):
-                self.log.info(f"Profile stopped successfully")
                 return True
-            else:
-                error_msg = data.get("status", {}).get("message", str(data))
-                self.log.warning(f"Failed to stop profile: {error_msg}")
-                return False
+            return False
 
         except Exception as e:
             self.log.warning(f"Error stopping profile: {e}")

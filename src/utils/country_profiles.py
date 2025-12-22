@@ -769,6 +769,49 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
         timezones=["Africa/Porto-Novo"],
         currency="XOF",
     ),
+
+    # Georgia (+995)
+    "995": CountryProfile(
+        country_code="995",
+        country_name="Georgia",
+        iso_code="GE",
+        locales=["ka-GE", "en-GE"],
+        accept_languages=[
+            "ka-GE,ka;q=0.9,en-US;q=0.8,en;q=0.7",
+            "ka,en-US;q=0.9,en;q=0.8",
+            "en-GE,en;q=0.9,ka;q=0.8",
+        ],
+        timezones=["Asia/Tbilisi"],
+        currency="GEL",
+    ),
+
+    # Cuba (+53)
+    "53": CountryProfile(
+        country_code="53",
+        country_name="Cuba",
+        iso_code="CU",
+        locales=["es-CU", "en-CU"],
+        accept_languages=[
+            "es-CU,es;q=0.9,en-US;q=0.8,en;q=0.7",
+            "es,en-US;q=0.9,en;q=0.8",
+        ],
+        timezones=["America/Havana"],
+        currency="CUP",
+    ),
+
+    # Nepal (+977)
+    "977": CountryProfile(
+        country_code="977",
+        country_name="Nepal",
+        iso_code="NP",
+        locales=["ne-NP", "en-NP"],
+        accept_languages=[
+            "ne-NP,ne;q=0.9,en-US;q=0.8,en;q=0.7",
+            "en-NP,en;q=0.9,ne;q=0.8",
+        ],
+        timezones=["Asia/Kathmandu"],
+        currency="NPR",
+    ),
 }
 
 # Default profile for unknown country codes (fallback to US)

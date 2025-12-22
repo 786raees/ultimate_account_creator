@@ -134,6 +134,7 @@ class AirbnbSignupPage(BasePage):
         # Map country codes to their ISO codes and names for the native select
         # Value format: {dial_code}{ISO_2_letter_code}
         country_map = {
+            # 3-digit country codes
             "380": ("UA", "Ukraine"),
             "375": ("BY", "Belarus"),
             "261": ("MG", "Madagascar"),
@@ -141,6 +142,11 @@ class AirbnbSignupPage(BasePage):
             "972": ("IL", "Israel"),
             "855": ("KH", "Cambodia"),
             "229": ("BJ", "Benin"),
+            "995": ("GE", "Georgia"),
+            "971": ("AE", "United Arab Emirates"),
+            "977": ("NP", "Nepal"),
+            # 2-digit country codes
+            "53": ("CU", "Cuba"),
             "1": ("US", "United States"),  # Note: US, CA, and others share +1
             "92": ("PK", "Pakistan"),
             "44": ("GB", "United Kingdom"),
@@ -157,7 +163,6 @@ class AirbnbSignupPage(BasePage):
             "39": ("IT", "Italy"),
             "31": ("NL", "Netherlands"),
             "65": ("SG", "Singapore"),
-            "977": ("NP", "Nepal"),
         }
 
         country_info = country_map.get(country_code)
@@ -316,8 +321,15 @@ class AirbnbSignupPage(BasePage):
             'div:has-text("security check")',
         ]
 
-        # OTP success text - this ONLY appears when SMS was actually sent
-        otp_success_text = "enter the code we sent over sms to"
+        # OTP success texts - these ONLY appear when SMS was actually sent
+        # Airbnb may show different variations of this message
+        otp_success_texts = [
+            "enter the code we've sent via sms to",  # Current Airbnb format
+            "enter the code we sent over sms to",     # Alternative format
+            "enter the code we sent via sms to",      # Another variation
+            "we've sent via sms",                     # Partial match
+            "sent via sms to +",                      # Partial with phone indicator
+        ]
 
         # OTP input indicators (backup check)
         otp_indicators = [
@@ -360,14 +372,15 @@ class AirbnbSignupPage(BasePage):
 
             # ============================================================
             # STEP 3: Check for OTP SUCCESS text
-            # "Enter the code we sent over SMS to" - confirms SMS was sent
+            # "Enter the code we've sent via SMS to" - confirms SMS was sent
             # ============================================================
-            if otp_success_text in page_text_lower:
-                self.log.info("=" * 50)
-                self.log.info("SUCCESS: Found 'Enter the code we sent over SMS to'")
-                self.log.info("SMS was sent successfully!")
-                self.log.info("=" * 50)
-                return True
+            for otp_success_text in otp_success_texts:
+                if otp_success_text in page_text_lower:
+                    self.log.info("=" * 50)
+                    self.log.info(f"SUCCESS: Found '{otp_success_text}'")
+                    self.log.info("SMS was sent successfully! Phone number is VALID.")
+                    self.log.info("=" * 50)
+                    return True
 
             # Backup: check for OTP input field
             for otp_sel in otp_indicators:
@@ -378,10 +391,11 @@ class AirbnbSignupPage(BasePage):
                         page_text_recheck = await self.page.inner_text('body')
                         page_text_lower_recheck = page_text_recheck.lower()
 
-                        # Check for success text
-                        if otp_success_text in page_text_lower_recheck:
-                            self.log.info("SUCCESS: OTP input + success text found")
-                            return True
+                        # Check for any success text variation
+                        for success_text in otp_success_texts:
+                            if success_text in page_text_lower_recheck:
+                                self.log.info(f"SUCCESS: OTP input + '{success_text}' found")
+                                return True
 
                         # Check for errors
                         has_error = False

@@ -58,8 +58,12 @@ class PhoneNumber(BaseModel):
                 "972": "Israel",
                 "855": "Cambodia",
                 "229": "Benin",
+                "995": "Georgia",
+                "971": "UAE",
+                "977": "Nepal",
             }
             country_codes_2_digit = {
+                "53": "Cuba",
                 "44": "UK",
                 "49": "Germany",
                 "33": "France",
