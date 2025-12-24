@@ -249,6 +249,9 @@ class MultiLoginXClient(LoggerMixin):
 
             data = response.json()
 
+            # Log full response for debugging
+            self.log.debug(f"MLX create_quick_profile response: {data}")
+
             # Handle different response formats from MLX API
             # The API can return data in various structures
 
@@ -264,8 +267,10 @@ class MultiLoginXClient(LoggerMixin):
                 result_data.get("id") or
                 result_data.get("profile_id") or
                 result_data.get("profileId") or
+                result_data.get("uuid") or
                 data.get("id") or
-                data.get("profile_id")
+                data.get("profile_id") or
+                data.get("uuid")
             )
 
             # Port might be in different keys
@@ -283,7 +288,7 @@ class MultiLoginXClient(LoggerMixin):
             )
 
             if is_success and port:
-                self.log.info(f"MLX profile ready (port {port})")
+                self.log.info(f"MLX profile ready (port {port}, id={profile_id})")
                 return QuickProfileResult(
                     success=True,
                     profile_id=profile_id,
@@ -316,7 +321,7 @@ class MultiLoginXClient(LoggerMixin):
         """
         url = f"{self.base_url}/api/v1/profile/stop"
 
-        self.log.debug(f"Stopping MLX profile...")
+        self.log.info(f"Stopping MLX profile: {profile_id}")
 
         try:
             client = await self._get_client()
@@ -331,13 +336,27 @@ class MultiLoginXClient(LoggerMixin):
                 headers=headers,
             )
 
+            self.log.debug(f"Stop profile response status: {response.status_code}")
+
             try:
                 data = response.json()
+                self.log.debug(f"Stop profile response: {data}")
             except Exception:
+                self.log.debug("Could not parse response as JSON")
                 return response.status_code == 200
 
-            if response.status_code == 200 and data.get("status", {}).get("ok"):
-                return True
+            # Check for success - MLX API can return success in different formats
+            status = data.get("status", {})
+            if response.status_code == 200:
+                if status.get("ok"):
+                    self.log.info("Profile stopped via API")
+                    return True
+                # Sometimes MLX returns 200 without "ok" but profile is still stopped
+                if "stop" in str(data).lower() or "success" in str(data).lower():
+                    self.log.info("Profile likely stopped (200 response)")
+                    return True
+
+            self.log.warning(f"Stop profile failed: status={response.status_code}, response={data}")
             return False
 
         except Exception as e:

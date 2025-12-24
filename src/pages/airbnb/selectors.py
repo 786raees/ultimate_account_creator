@@ -26,50 +26,57 @@ class HomePageSelectors:
 class SignupPageSelectors:
     """Selectors for the Airbnb signup flow."""
 
-    # Signup modal - multiple possible selectors for the modal dialog
+    # Signup modal/pane - using data-testid which is more reliable
     SIGNUP_MODAL = (
+        '[data-testid="login-pane"], '
+        '[data-testid="auth-form"], '
         '[role="dialog"], '
-        '[aria-modal="true"], '
-        'div[data-testid="login-pane"], '
-        'div:has(> h3:text("Log in or sign up")), '
-        'div:has(> div:text("Welcome to Airbnb"))'
+        '[aria-modal="true"]'
     )
 
-    # Modal header text indicators - multi-language
+    # Auth form - the main form element
+    AUTH_FORM = '[data-testid="auth-form"]'
+
+    # Modal header text indicators - multi-language (h2 or h3)
     MODAL_HEADER = (
+        'h2:has-text("Welcome to Airbnb"), '
         'h3:has-text("Log in or sign up"), '
-        'div:has-text("Log in or sign up"), '
-        'h3:has-text("Увійдіть або зареєструйтеся"), '  # Ukrainian
-        'div:has-text("Увійдіть або зареєструйтеся"), '
-        'h3:has-text("Войдите или зарегистрируйтесь"), '  # Russian
-        'div:has-text("Войдите или зарегистрируйтесь")'
+        'h2:has-text("Log in or sign up"), '
+        'h2:has-text("Увійдіть або зареєструйтеся"), '  # Ukrainian
+        'h3:has-text("Увійдіть або зареєструйтеся"), '
+        'h2:has-text("Войдите или зарегистрируйтесь"), '  # Russian
+        'h3:has-text("Войдите или зарегистрируйтесь")'
     )
     WELCOME_TEXT = (
-        'div:has-text("Welcome to Airbnb"), '
+        'h2:has-text("Welcome to Airbnb"), '
         'h1:has-text("Welcome to Airbnb"), '
-        'div:has-text("Ласкаво просимо"), '  # Ukrainian: Welcome
+        'div:has-text("Welcome to Airbnb"), '
+        'h2:has-text("Ласкаво просимо"), '  # Ukrainian: Welcome
         'h1:has-text("Ласкаво просимо"), '
-        'div:has-text("Добро пожаловать"), '  # Russian: Welcome
+        'h2:has-text("Добро пожаловать"), '  # Russian: Welcome
         'h1:has-text("Добро пожаловать")'
     )
 
     # Close button
     MODAL_CLOSE = 'button[aria-label="Close"], [data-testid="modal-close"]'
 
-    # Country code selector (dropdown for phone country)
-    COUNTRY_CODE_BUTTON = (
-        'button:has-text("+"), '
-        '[data-testid="country-picker"], '
-        'button[id*="country"]'
+    # Country code selector - it's a <select> element, not a button
+    COUNTRY_CODE_SELECT = (
+        'select[data-testid="login-signup-countrycode"], '
+        'select#country, '
+        'select[id*="country"]'
     )
+    # Legacy alias for backwards compatibility
+    COUNTRY_CODE_BUTTON = COUNTRY_CODE_SELECT
     COUNTRY_CODE_DROPDOWN = '[role="listbox"], [data-testid="country-list"]'
     COUNTRY_OPTION = '[role="option"]'
 
-    # Phone number input - main phone field
+    # Phone number input - using data-testid for reliability
     PHONE_INPUT = (
+        'input[data-testid="login-signup-phonenumber"], '
         'input[type="tel"], '
-        'input[name="phoneNumber"], '
-        'input[placeholder*="Phone"], '
+        'input[name*="phone"], '
+        'input[autocomplete="tel-national"], '
         'input[autocomplete="tel"]'
     )
 

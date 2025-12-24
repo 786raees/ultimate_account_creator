@@ -84,6 +84,7 @@ class BrowserManager(LoggerMixin):
         self._browser: Browser | None = None
         self._current_fingerprint: Optional[BrowserFingerprint] = None
         self._current_proxy_port: Optional[int] = None
+        self._current_proxy_host: Optional[str] = None  # Country-specific proxy host
         self._phone_number: Optional[str] = None
         self._country_iso: Optional[str] = None  # ISO country code for proxy targeting
 
@@ -158,16 +159,32 @@ class BrowserManager(LoggerMixin):
         # Get rotated proxy port if enabled
         if self.use_proxy and self.rotate_proxy and self.settings.proxy.rotate_per_request:
             self._current_proxy_port = self.settings.proxy.get_rotated_port()
-            self.log.info(f"Proxy Host: {self.settings.proxy.host}:{self._current_proxy_port} (rotated)")
         elif self.use_proxy:
             self._current_proxy_port = self.settings.proxy.port
-            self.log.info(f"Proxy Host: {self.settings.proxy.host}:{self._current_proxy_port}")
 
-        if self.use_proxy:
-            proxy_username = self._get_proxy_username()
-            self.log.info(f"Proxy User: {proxy_username}")
+        # Get country-specific host if country is available
+        if self._country_iso:
+            self._current_proxy_host = self.settings.proxy.get_country_host(self._country_iso)
+        else:
+            self._current_proxy_host = self.settings.proxy.host
+
+        # Log proxy information prominently
+        if self.use_proxy and self.settings.proxy.username:
+            proxy_port = self._current_proxy_port or self.settings.proxy.port
+            self.log.info("=" * 60)
+            self.log.info("PROXY CONFIGURATION")
+            self.log.info("=" * 60)
+            self.log.info(f"  Host: {self._current_proxy_host}")
+            self.log.info(f"  Port: {proxy_port}")
+            self.log.info(f"  Username: {self.settings.proxy.username}")
+            self.log.info(f"  Full URL: http://{self._current_proxy_host}:{proxy_port}")
             if self._country_iso:
-                self.log.info(f"Proxy Country Target: {self._country_iso}")
+                self.log.info(f"  Country: {self._country_iso}")
+            self.log.info("=" * 60)
+        else:
+            self.log.info("=" * 60)
+            self.log.info("NO PROXY CONFIGURED")
+            self.log.info("=" * 60)
 
         self._playwright = await async_playwright().start()
 
@@ -234,16 +251,16 @@ class BrowserManager(LoggerMixin):
             "slow_mo": self.settings.browser.slow_mo,
         }
 
-        # Add proxy if enabled (use rotated port and country targeting)
+        # Add proxy if enabled (use country-specific host and rotated port)
         if self.use_proxy and self.settings.proxy.username:
-            proxy_username = self._get_proxy_username()
+            proxy_host = self._current_proxy_host or self.settings.proxy.host
+            proxy_port = self._current_proxy_port or self.settings.proxy.port
             proxy_config = {
-                "server": f"http://{self.settings.proxy.host}:{self._current_proxy_port or self.settings.proxy.port}",
-                "username": proxy_username,
+                "server": f"http://{proxy_host}:{proxy_port}",
+                "username": self.settings.proxy.username,
                 "password": self.settings.proxy.password,
             }
             options["proxy"] = proxy_config
-            self.log.info(f"Proxy configured: {self.settings.proxy.host}:{self._current_proxy_port} (user: {proxy_username})")
 
         return options
 
@@ -273,12 +290,13 @@ class BrowserManager(LoggerMixin):
                 "ignore_https_errors": True,
             }
 
-        # Add proxy authentication if needed (use rotated port and country targeting)
+        # Add proxy authentication if needed (use country-specific host and rotated port)
         if self.use_proxy and self.settings.proxy.username:
-            proxy_username = self._get_proxy_username()
+            proxy_host = self._current_proxy_host or self.settings.proxy.host
+            proxy_port = self._current_proxy_port or self.settings.proxy.port
             options["proxy"] = {
-                "server": f"http://{self.settings.proxy.host}:{self._current_proxy_port or self.settings.proxy.port}",
-                "username": proxy_username,
+                "server": f"http://{proxy_host}:{proxy_port}",
+                "username": self.settings.proxy.username,
                 "password": self.settings.proxy.password,
             }
 
@@ -459,18 +477,40 @@ class BrowserManager(LoggerMixin):
                 self._current_proxy_port = self.settings.proxy.port
 
             # Build proxy config for MLX
-            # Note: Use base username for MLX - MLX handles geo-targeting via fingerprinting
-            # Country-targeted username format may not work with MLX's proxy handling
+            # Use country-specific host if country is set
             proxy_config = None
             if self.use_proxy and self.settings.proxy.username:
                 proxy_port = self._current_proxy_port or self.settings.proxy.port
+
+                # Get country-specific host if country is available
+                if self._country_iso:
+                    proxy_host = self.settings.proxy.get_country_host(self._country_iso)
+                else:
+                    proxy_host = self.settings.proxy.host
+
                 proxy_config = {
-                    "host": self.settings.proxy.host,
+                    "host": proxy_host,
                     "type": "http",
                     "port": proxy_port,
                     "username": self.settings.proxy.username,
                     "password": self.settings.proxy.password,
                 }
+
+                # Log proxy information prominently
+                self.log.info("=" * 60)
+                self.log.info("PROXY CONFIGURATION")
+                self.log.info("=" * 60)
+                self.log.info(f"  Host: {proxy_host}")
+                self.log.info(f"  Port: {proxy_port}")
+                self.log.info(f"  Username: {self.settings.proxy.username}")
+                self.log.info(f"  Full URL: http://{proxy_host}:{proxy_port}")
+                if self._country_iso:
+                    self.log.info(f"  Country: {self._country_iso}")
+                self.log.info("=" * 60)
+            else:
+                self.log.info("=" * 60)
+                self.log.info("NO PROXY CONFIGURED")
+                self.log.info("=" * 60)
 
             # Create quick profile - let MLX auto-handle screen resolution
             profile_result = await self._mlx_client.create_quick_profile(
@@ -535,13 +575,41 @@ class BrowserManager(LoggerMixin):
             raise
 
         finally:
-            # Clean up
+            # Clean up - Close browser properly
+            # For MLX profiles, we need to close pages first, then tell MLX to stop
 
+            # Step 1: Close all pages and contexts via Playwright (this signals we're done)
+            if self._browser:
+                try:
+                    # Close all contexts (which closes all pages)
+                    for context in self._browser.contexts:
+                        try:
+                            await context.close()
+                        except Exception:
+                            pass
+                    self.log.debug("Closed all browser contexts")
+                except Exception as e:
+                    self.log.debug(f"Error closing contexts: {e}")
+
+            # Step 2: Tell MLX to stop the profile (this should close the browser)
+            profile_stopped = False
+            if self._mlx_client and self._mlx_profile_id:
+                self.log.info("Stopping MLX profile...")
+                try:
+                    profile_stopped = await self._mlx_client.stop_profile(self._mlx_profile_id)
+                    if profile_stopped:
+                        self.log.info("MLX profile stopped successfully")
+                    else:
+                        self.log.warning("MLX stop_profile returned False")
+                except Exception as e:
+                    self.log.warning(f"Error stopping MLX profile: {e}")
+
+            # Step 3: Disconnect Playwright
             if self._browser:
                 try:
                     await self._browser.close()
                 except Exception as e:
-                    self.log.debug(f"Error closing browser: {e}")
+                    self.log.debug(f"Error closing browser connection: {e}")
                 self._browser = None
 
             if self._playwright:
@@ -551,42 +619,75 @@ class BrowserManager(LoggerMixin):
                     self.log.debug(f"Error stopping playwright: {e}")
                 self._playwright = None
 
-            # Stop the MLX profile
-            if self._mlx_client and self._mlx_profile_id:
-                await self._mlx_client.stop_profile(self._mlx_profile_id)
-                self._mlx_profile_id = None
+            # Step 4: If MLX didn't stop the profile, try to kill only the MLX chrome process
+            if not profile_stopped and self._mlx_profile_id:
+                self.log.warning("MLX profile not stopped via API, attempting process cleanup...")
+                await self._kill_mlx_chrome_process()
 
+            self._mlx_profile_id = None
+
+            # Step 5: Close the MLX HTTP client
             if self._mlx_client:
                 await self._mlx_client.close()
                 self._mlx_client = None
 
-            # Kill any remaining Chrome processes from MLX
-            await self._kill_chrome_processes()
+            # Give system a moment to clean up
+            await asyncio.sleep(1)
 
-    async def _kill_chrome_processes(self) -> None:
-        """Kill Chrome processes to ensure MLX profiles are fully stopped."""
+    async def _kill_mlx_chrome_process(self) -> None:
+        """
+        Kill Chrome processes started by MultiLoginX.
+
+        Uses PowerShell to find chrome processes with MLX-related paths in their command line,
+        leaving personal Chrome instances untouched.
+        """
         import subprocess
         import platform
 
         try:
             if platform.system() == "Windows":
-                # Kill Chrome processes on Windows
-                subprocess.run(
-                    ["taskkill", "/F", "/IM", "chrome.exe"],
+                # Use PowerShell to find and kill MLX chrome processes
+                # MLX profiles are stored in paths containing 'mlx' or '.multilogin'
+                ps_script = '''
+                Get-Process chrome -ErrorAction SilentlyContinue | ForEach-Object {
+                    try {
+                        $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)").CommandLine
+                        if ($cmdLine -match 'mlx|multilogin|\.mlx') {
+                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                            Write-Output "Killed: $($_.Id)"
+                        }
+                    } catch {}
+                }
+                '''
+                result = subprocess.run(
+                    ["powershell", "-Command", ps_script],
                     capture_output=True,
-                    timeout=10,
+                    text=True,
+                    timeout=15,
                 )
-                self.log.debug("Killed Chrome processes")
+                if result.stdout.strip():
+                    self.log.info(f"MLX process cleanup: {result.stdout.strip()}")
+                else:
+                    self.log.debug("No MLX chrome processes found to kill")
+
             else:
-                # Kill Chrome processes on Linux/Mac
+                # Linux/Mac - kill chrome processes with mlx in command line
                 subprocess.run(
-                    ["pkill", "-f", "chrome"],
+                    ["pkill", "-f", "chrome.*mlx"],
                     capture_output=True,
                     timeout=10,
                 )
-                self.log.debug("Killed Chrome processes")
+                subprocess.run(
+                    ["pkill", "-f", "chrome.*multilogin"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.log.debug("MLX chrome cleanup attempted")
+
+        except subprocess.TimeoutExpired:
+            self.log.warning("Process cleanup timed out")
         except Exception as e:
-            self.log.debug(f"Could not kill Chrome processes: {e}")
+            self.log.debug(f"Could not kill MLX Chrome processes: {e}")
 
     @asynccontextmanager
     async def page_context(self) -> AsyncGenerator[Page, None]:

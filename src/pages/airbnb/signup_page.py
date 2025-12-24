@@ -51,12 +51,16 @@ class AirbnbSignupPage(BasePage):
         self.log.info("Waiting for signup modal...")
 
         # Try multiple indicators that the modal is visible
+        # Using data-testid selectors first as they're most reliable
         modal_indicators = [
-            '[role="dialog"]',
-            '[aria-modal="true"]',
-            'div:has-text("Welcome to Airbnb")',
-            'div:has-text("Log in or sign up")',
-            'input[type="tel"]',  # Phone input is visible in modal
+            '[data-testid="login-pane"]',  # Main login pane container
+            '[data-testid="auth-form"]',  # The auth form itself
+            'input[data-testid="login-signup-phonenumber"]',  # Phone input
+            'select[data-testid="login-signup-countrycode"]',  # Country selector
+            'button[data-testid="signup-login-submit-btn"]',  # Submit button
+            'h2:has-text("Welcome to Airbnb")',  # Header text (h2 not div)
+            '[role="dialog"]',  # Fallback: dialog role
+            'input[type="tel"]',  # Fallback: any phone input
         ]
 
         for selector in modal_indicators:
@@ -73,7 +77,8 @@ class AirbnbSignupPage(BasePage):
     async def is_signup_modal_visible(self) -> bool:
         """Check if the signup modal is visible."""
         try:
-            modal = self.page.locator('[role="dialog"], [aria-modal="true"]').first
+            # Check for login pane or auth form (more reliable than role="dialog")
+            modal = self.page.locator('[data-testid="login-pane"], [data-testid="auth-form"], [role="dialog"]').first
             return await modal.is_visible(timeout=2000)
         except PlaywrightTimeout:
             return False
@@ -92,13 +97,20 @@ class AirbnbSignupPage(BasePage):
         self.log.info("Checking if phone input is already visible...")
 
         # Check if phone input is already visible (new Airbnb default)
-        try:
-            phone_input = self.page.locator('input[type="tel"]').first
-            if await phone_input.is_visible(timeout=3000):
-                self.log.info("Phone input already visible - skipping selection")
-                return
-        except PlaywrightTimeout:
-            pass
+        # Use data-testid selector first for reliability
+        phone_input_selectors = [
+            'input[data-testid="login-signup-phonenumber"]',
+            'input[type="tel"]',
+        ]
+
+        for selector in phone_input_selectors:
+            try:
+                phone_input = self.page.locator(selector).first
+                if await phone_input.is_visible(timeout=3000):
+                    self.log.info(f"Phone input already visible ({selector}) - skipping selection")
+                    return
+            except PlaywrightTimeout:
+                continue
 
         # Try to find and click phone option if needed
         self.log.info("Looking for phone signup option...")
@@ -142,9 +154,60 @@ class AirbnbSignupPage(BasePage):
             "972": ("IL", "Israel"),
             "855": ("KH", "Cambodia"),
             "229": ("BJ", "Benin"),
+            "226": ("BF", "Burkina Faso"),
             "995": ("GE", "Georgia"),
             "971": ("AE", "United Arab Emirates"),
             "977": ("NP", "Nepal"),
+            "961": ("LB", "Lebanon"),
+            "998": ("UZ", "Uzbekistan"),
+            "880": ("BD", "Bangladesh"),
+            "234": ("NG", "Nigeria"),
+            "254": ("KE", "Kenya"),
+            "255": ("TZ", "Tanzania"),
+            "256": ("UG", "Uganda"),
+            "212": ("MA", "Morocco"),
+            "213": ("DZ", "Algeria"),
+            "216": ("TN", "Tunisia"),
+            "218": ("LY", "Libya"),
+            "220": ("GM", "Gambia"),
+            "221": ("SN", "Senegal"),
+            "222": ("MR", "Mauritania"),
+            "223": ("ML", "Mali"),
+            "224": ("GN", "Guinea"),
+            "225": ("CI", "Côte d'Ivoire"),
+            "227": ("NE", "Niger"),
+            "228": ("TG", "Togo"),
+            "230": ("MU", "Mauritius"),
+            "231": ("LR", "Liberia"),
+            "232": ("SL", "Sierra Leone"),
+            "233": ("GH", "Ghana"),
+            "237": ("CM", "Cameroon"),
+            "238": ("CV", "Cape Verde"),
+            "239": ("ST", "São Tomé and Príncipe"),
+            "240": ("GQ", "Equatorial Guinea"),
+            "241": ("GA", "Gabon"),
+            "242": ("CG", "Republic of the Congo"),
+            "243": ("CD", "Democratic Republic of the Congo"),
+            "244": ("AO", "Angola"),
+            "245": ("GW", "Guinea-Bissau"),
+            "246": ("IO", "British Indian Ocean Territory"),
+            "247": ("AC", "Ascension Island"),
+            "248": ("SC", "Seychelles"),
+            "249": ("SD", "Sudan"),
+            "250": ("RW", "Rwanda"),
+            "251": ("ET", "Ethiopia"),
+            "252": ("SO", "Somalia"),
+            "253": ("DJ", "Djibouti"),
+            "257": ("BI", "Burundi"),
+            "258": ("MZ", "Mozambique"),
+            "260": ("ZM", "Zambia"),
+            "263": ("ZW", "Zimbabwe"),
+            "264": ("NA", "Namibia"),
+            "265": ("MW", "Malawi"),
+            "266": ("LS", "Lesotho"),
+            "267": ("BW", "Botswana"),
+            "268": ("SZ", "Eswatini"),
+            "269": ("KM", "Comoros"),
             # 2-digit country codes
             "53": ("CU", "Cuba"),
             "1": ("US", "United States"),  # Note: US, CA, and others share +1
@@ -163,6 +226,34 @@ class AirbnbSignupPage(BasePage):
             "39": ("IT", "Italy"),
             "31": ("NL", "Netherlands"),
             "65": ("SG", "Singapore"),
+            "20": ("EG", "Egypt"),
+            "27": ("ZA", "South Africa"),
+            "30": ("GR", "Greece"),
+            "32": ("BE", "Belgium"),
+            "36": ("HU", "Hungary"),
+            "40": ("RO", "Romania"),
+            "41": ("CH", "Switzerland"),
+            "43": ("AT", "Austria"),
+            "45": ("DK", "Denmark"),
+            "46": ("SE", "Sweden"),
+            "47": ("NO", "Norway"),
+            "51": ("PE", "Peru"),
+            "52": ("MX", "Mexico"),
+            "54": ("AR", "Argentina"),
+            "55": ("BR", "Brazil"),
+            "56": ("CL", "Chile"),
+            "57": ("CO", "Colombia"),
+            "58": ("VE", "Venezuela"),
+            "60": ("MY", "Malaysia"),
+            "62": ("ID", "Indonesia"),
+            "63": ("PH", "Philippines"),
+            "64": ("NZ", "New Zealand"),
+            "66": ("TH", "Thailand"),
+            "84": ("VN", "Vietnam"),
+            "90": ("TR", "Turkey"),
+            "93": ("AF", "Afghanistan"),
+            "94": ("LK", "Sri Lanka"),
+            "95": ("MM", "Myanmar"),
         }
 
         country_info = country_map.get(country_code)
@@ -213,11 +304,12 @@ class AirbnbSignupPage(BasePage):
         # Select country code first
         await self.select_country_code(phone.country_code)
 
-        # Find and fill the phone input
+        # Find and fill the phone input - use data-testid first for reliability
         phone_selectors = [
+            'input[data-testid="login-signup-phonenumber"]',  # Most reliable
             'input[type="tel"]',
-            'input[name="phoneNumber"]',
-            'input[placeholder*="Phone"]',
+            'input[name*="phone"]',
+            'input[autocomplete="tel-national"]',
             'input[autocomplete="tel"]',
         ]
 
@@ -243,10 +335,11 @@ class AirbnbSignupPage(BasePage):
         """Click the continue button."""
         self.log.info("Clicking continue button...")
 
+        # Use data-testid first for reliability
         continue_selectors = [
+            'button[data-testid="signup-login-submit-btn"]',  # Most reliable
             'button:has-text("Continue")',
             'button[type="submit"]',
-            '[data-testid="signup-login-submit-btn"]',
         ]
 
         for selector in continue_selectors:

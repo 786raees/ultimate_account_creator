@@ -26,14 +26,22 @@ class ProxySettings(BaseSettings):
     )
 
     host: str = Field(default="gate.decodo.com", description="Proxy server hostname")
-    port: int = Field(default=10001, description="Default proxy server port")
+    host_domain: str = Field(default="decodo.com", description="Base domain for country-specific hosts")
+    port: int = Field(default=40001, description="Default proxy server port")
     username: str = Field(default="", description="Proxy authentication username")
     password: str = Field(default="", description="Proxy authentication password")
 
     # Rotating proxy configuration
-    port_range_start: int = Field(default=10001, description="Start of rotating port range")
-    port_range_end: int = Field(default=10100, description="End of rotating port range")
+    port_range_start: int = Field(default=40001, description="Start of rotating port range")
+    port_range_end: int = Field(default=49999, description="End of rotating port range")
     rotate_per_request: bool = Field(default=True, description="Rotate proxy for each new session")
+
+    # Country-specific proxy host mapping (ISO code -> subdomain prefix)
+    # Override defaults where the subdomain doesn't match the ISO code
+    COUNTRY_HOST_OVERRIDES: dict = {
+        # Add any country-specific overrides here
+        # e.g., "GB": "uk" if the provider uses "uk" instead of "gb"
+    }
 
     def get_rotated_port(self) -> int:
         """Get a random port from the rotation range."""
@@ -88,20 +96,46 @@ class ProxySettings(BaseSettings):
             return self.username
         return f"user-{self.username}-country-{country_iso.lower()}"
 
-    def get_country_targeted_playwright_proxy(self, country_iso: str) -> dict[str, str]:
+    def get_country_host(self, country_iso: str) -> str:
         """
-        Get proxy configuration with country targeting.
+        Get country-specific proxy host.
+
+        Uses format: {country_code}.{domain} (e.g., ua.decodo.com for Ukraine)
 
         Args:
             country_iso: 2-letter ISO country code (e.g., "UA", "US", "GB")
 
         Returns:
-            Playwright proxy config with country-targeted username.
+            Country-specific proxy host.
+        """
+        if not country_iso:
+            return self.host
+
+        # Check for overrides first
+        subdomain = self.COUNTRY_HOST_OVERRIDES.get(
+            country_iso.upper(),
+            country_iso.lower()  # Default: use ISO code as subdomain
+        )
+
+        return f"{subdomain}.{self.host_domain}"
+
+    def get_country_targeted_playwright_proxy(self, country_iso: str) -> dict[str, str]:
+        """
+        Get proxy configuration with country targeting.
+
+        Uses country-specific host and rotated port.
+
+        Args:
+            country_iso: 2-letter ISO country code (e.g., "UA", "US", "GB")
+
+        Returns:
+            Playwright proxy config with country-specific host.
         """
         rotated_port = self.get_rotated_port()
+        country_host = self.get_country_host(country_iso)
         return {
-            "server": f"http://{self.host}:{rotated_port}",
-            "username": self.get_country_targeted_username(country_iso),
+            "server": f"http://{country_host}:{rotated_port}",
+            "username": self.username,  # No username modification needed with country-specific host
             "password": self.password,
         }
 
