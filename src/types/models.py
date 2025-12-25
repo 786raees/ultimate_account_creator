@@ -70,6 +70,7 @@ class PhoneNumber(BaseModel):
                 "39": "Italy",
                 "34": "Spain",
                 "91": "India",
+                "92": "Pakistan",
                 "86": "China",
                 "81": "Japan",
                 "82": "South Korea",

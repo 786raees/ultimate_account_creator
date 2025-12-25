@@ -856,6 +856,17 @@ COUNTRY_PROFILES: Dict[str, CountryProfile] = {
         timezones=["Africa/Ouagadougou"],
         currency="XOF",
     ),
+    "92": CountryProfile(
+        country_code="92",
+        country_name="Pakistan",
+        iso_code="PK",
+        locales=["en-PK", "ur-PK"],
+        accept_languages=[
+            "en-PK,en;q=0.9,ur;q=0.8",
+        ],
+        timezones=["Asia/Karachi"],
+        currency="PKR",
+    ),
 }
 
 # Default profile for unknown country codes (fallback to US)

@@ -254,6 +254,7 @@ class AirbnbSignupPage(BasePage):
             "93": ("AF", "Afghanistan"),
             "94": ("LK", "Sri Lanka"),
             "95": ("MM", "Myanmar"),
+            "92": ("PK", "Pakistan"),
         }
 
         country_info = country_map.get(country_code)
